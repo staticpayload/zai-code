@@ -8,6 +8,45 @@ const runtime_1 = require("./runtime");
 const auth_1 = require("./auth");
 const mode_prompts_1 = require("./mode_prompts");
 const apply_1 = require("./apply");
+// Helper to extract meaningful text from API response
+function extractTextFromResponse(response) {
+    if (typeof response === 'string') {
+        // Strip markdown code blocks
+        let text = response;
+        text = text.replace(/```json\n?/gi, '').replace(/```\n?/g, '');
+        // Try to parse as JSON and extract explanation
+        try {
+            const parsed = JSON.parse(text);
+            if (parsed.explanation)
+                return parsed.explanation;
+            if (parsed.output)
+                return parsed.output;
+            if (parsed.message)
+                return parsed.message;
+            if (parsed.summary)
+                return parsed.summary;
+            if (parsed.status === 'error' && parsed.explanation)
+                return parsed.explanation;
+        }
+        catch {
+            // Not JSON, return as-is
+        }
+        return text.trim();
+    }
+    if (typeof response === 'object' && response !== null) {
+        const obj = response;
+        if (obj.explanation)
+            return String(obj.explanation);
+        if (obj.output)
+            return String(obj.output);
+        if (obj.message)
+            return String(obj.message);
+        if (obj.summary)
+            return String(obj.summary);
+        return JSON.stringify(response, null, 2);
+    }
+    return String(response);
+}
 // Intent classification (rule-based, no model)
 function classifyIntent(input) {
     const lower = input.toLowerCase().trim();
@@ -78,35 +117,8 @@ Respond directly and concisely.`;
         console.log((0, ui_1.dim)('Thinking...'));
         const result = await (0, runtime_1.execute)({ instruction, enforceSchema: false }, apiKey);
         if (result.success && result.output) {
-            const response = result.output;
-            // Handle string response
-            if (typeof response === 'string') {
-                console.log(response);
-            }
-            else if (typeof response === 'object') {
-                const obj = response;
-                // Try various output fields
-                if (obj.output) {
-                    console.log(obj.output);
-                }
-                else if (obj.explanation) {
-                    console.log(obj.explanation);
-                }
-                else if (obj.summary) {
-                    console.log(obj.summary);
-                    if (obj.issues && Array.isArray(obj.issues)) {
-                        for (const issue of obj.issues) {
-                            console.log(`  [${issue.severity || 'note'}] ${issue.description || ''}`);
-                        }
-                    }
-                }
-                else if (obj.message) {
-                    console.log(obj.message);
-                }
-                else {
-                    console.log(JSON.stringify(response, null, 2));
-                }
-            }
+            const text = extractTextFromResponse(result.output);
+            console.log(text);
         }
         else {
             console.log((0, ui_1.error)(`Failed: ${result.error || 'Unknown error'}`));
@@ -165,12 +177,10 @@ Be decisive and complete the task.`;
                 }
             }
             // Show output
-            if (response.output) {
+            const text = extractTextFromResponse(result.output);
+            if (text && text !== '{}') {
                 console.log('');
-                console.log(response.output);
-            }
-            else if (typeof response === 'string') {
-                console.log(response);
+                console.log(text);
             }
         }
         else {
