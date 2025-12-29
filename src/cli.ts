@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { startInteractive } from './interactive';
+import { startTUI } from './tui';
 import { ensureAuthenticated, runOnboarding } from './auth';
 import { execute, ResponseSchema } from './runtime';
 import { applyResponse } from './apply';
@@ -32,12 +32,12 @@ async function handleDefault(): Promise<void> {
     markFirstRunComplete();
   }
 
-  await startInteractive({
+  // Launch blessed TUI
+  await startTUI({
     projectName: path.basename(session.workingDirectory),
     restored,
     onExit: () => {
       ws.saveState();
-      process.exit(0);
     },
   });
 }
