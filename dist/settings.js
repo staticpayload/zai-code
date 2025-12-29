@@ -127,10 +127,24 @@ function saveSettings(settings) {
 function getSetting(key) {
     return loadSettings()[key];
 }
+// Default model - ONLY valid option if stored model is invalid
+const DEFAULT_MODEL = 'glm-4.7';
 function getModel() {
-    return loadSettings().model.current;
+    const stored = loadSettings().model.current;
+    // CRITICAL: Validate model is a valid glm-* model
+    if (!exports.AVAILABLE_MODELS.includes(stored)) {
+        // Invalid model stored - reset to default and save
+        console.warn(`Invalid model "${stored}" found in settings. Resetting to ${DEFAULT_MODEL}.`);
+        setModel(DEFAULT_MODEL);
+        return DEFAULT_MODEL;
+    }
+    return stored;
 }
 function setModel(model) {
+    // CRITICAL: Only allow valid glm-* models
+    if (!exports.AVAILABLE_MODELS.includes(model)) {
+        throw new Error(`Invalid model: ${model}. Valid models: ${exports.AVAILABLE_MODELS.join(', ')}`);
+    }
     const settings = loadSettings();
     settings.model.current = model;
     saveSettings(settings);
