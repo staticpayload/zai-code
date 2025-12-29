@@ -356,7 +356,7 @@ export async function execute(
   apiKey: string
 ): Promise<ExecutionResponse> {
   const config = loadConfig();
-  const baseUrl = (config.api as { baseUrl?: string })?.baseUrl || 'https://open.bigmodel.cn/api/paas/v4/';
+  const baseUrl = (config.api as { baseUrl?: string })?.baseUrl || 'https://api.z.ai/api/coding/paas/v4/';
   const url = baseUrl.endsWith('/') ? `${baseUrl}chat/completions` : `${baseUrl}/chat/completions`;
 
   const model = request.model || getModel();
