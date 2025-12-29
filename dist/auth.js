@@ -1,0 +1,170 @@
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getApiKey = getApiKey;
+exports.setApiKey = setApiKey;
+exports.deleteApiKey = deleteApiKey;
+exports.hasValidCredentials = hasValidCredentials;
+exports.validateApiKey = validateApiKey;
+exports.promptForApiKey = promptForApiKey;
+exports.runOnboarding = runOnboarding;
+exports.ensureAuthenticated = ensureAuthenticated;
+const keytar = __importStar(require("keytar"));
+const readline = __importStar(require("readline"));
+const config_1 = require("./config");
+const SERVICE_NAME = 'zai-code';
+const ACCOUNT_NAME = 'api-key';
+async function httpsGet(url, headers) {
+    return new Promise((resolve, reject) => {
+        const parsedUrl = new URL(url);
+        const options = {
+            hostname: parsedUrl.hostname,
+            port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+            path: parsedUrl.pathname + parsedUrl.search,
+            method: 'GET',
+            headers: {
+                ...headers,
+                'User-Agent': 'zai-cli',
+            },
+        };
+        const req = require('https').request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => {
+                data += chunk;
+            });
+            res.on('end', () => {
+                resolve({ statusCode: res.statusCode, data });
+            });
+        });
+        req.on('error', reject);
+        req.end();
+    });
+}
+async function getApiKey() {
+    try {
+        return await keytar.getPassword(SERVICE_NAME, ACCOUNT_NAME);
+    }
+    catch (error) {
+        return null;
+    }
+}
+async function setApiKey(key) {
+    await keytar.setPassword(SERVICE_NAME, ACCOUNT_NAME, key);
+}
+async function deleteApiKey() {
+    await keytar.deletePassword(SERVICE_NAME, ACCOUNT_NAME);
+}
+async function hasValidCredentials() {
+    const key = await getApiKey();
+    return key !== null && key.length > 0;
+}
+async function validateApiKey(key) {
+    try {
+        const config = (0, config_1.loadConfig)();
+        const response = await httpsGet(`${config.api.baseUrl}/models`, {
+            Authorization: `Bearer ${key}`,
+        });
+        return response.statusCode >= 200 && response.statusCode < 300;
+    }
+    catch {
+        return false;
+    }
+}
+async function promptForApiKey() {
+    return new Promise((resolve) => {
+        const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout,
+        });
+        // Use readline with muted input for hidden password
+        const stdin = process.stdin;
+        const stdout = process.stdout;
+        stdout.write('Enter API key: ');
+        stdin.setRawMode(true);
+        stdin.resume();
+        stdin.setEncoding('utf8');
+        let key = '';
+        const onData = (char) => {
+            if (char === '\r' || char === '\n' || char === '\u0004') {
+                // Enter or Ctrl-D
+                stdin.setRawMode(false);
+                stdin.pause();
+                stdin.removeListener('data', onData);
+                stdout.write('\n');
+                rl.close();
+                resolve(key);
+            }
+            else if (char === '\u0003') {
+                // Ctrl-C
+                stdout.write('\n');
+                process.exit(0);
+            }
+            else if (char === '\u007f') {
+                // Backspace
+                if (key.length > 0) {
+                    key = key.slice(0, -1);
+                }
+            }
+            else {
+                key += char;
+            }
+        };
+        stdin.on('data', onData);
+    });
+}
+async function runOnboarding() {
+    while (true) {
+        console.log('Z.ai API key required');
+        const key = await promptForApiKey();
+        if (await validateApiKey(key)) {
+            await setApiKey(key);
+            console.log('Authentication successful');
+            return;
+        }
+        else {
+            console.log('Invalid API key');
+        }
+    }
+}
+async function ensureAuthenticated() {
+    if (await hasValidCredentials()) {
+        const key = await getApiKey();
+        return key;
+    }
+    await runOnboarding();
+    const key = await getApiKey();
+    return key;
+}
+//# sourceMappingURL=auth.js.map
