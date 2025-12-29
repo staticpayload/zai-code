@@ -23,6 +23,12 @@ export interface Settings {
     };
     firstRun: boolean;
 }
+export interface ModelDefinition {
+    id: string;
+    name: string;
+    description: string;
+}
+export declare const ZAI_MODELS: ModelDefinition[];
 export declare const AVAILABLE_MODELS: string[];
 export declare function loadSettings(): Settings;
 export declare function saveSettings(settings: Settings): void;

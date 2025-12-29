@@ -16,7 +16,7 @@ import {
   setDryRun,
   isDryRun,
 } from './session';
-import { loadSettings, setNestedSetting, hasProjectSettings } from './settings';
+import { loadSettings, setNestedSetting, hasProjectSettings, getModel, setModel, ZAI_MODELS, AVAILABLE_MODELS } from './settings';
 import { getGitInfo } from './git';
 import { listProfiles, applyProfile, getActiveProfileName } from './profiles';
 import { getHistory as getTaskHistory, getLastEntry, clearHistory, logTask, HistoryEntry } from './history';
@@ -77,7 +77,7 @@ const handlers: Record<string, CommandHandler> = {
     console.log('Execution:');
     console.log('  /plan /generate /diff /apply /undo');
     console.log('Modes:');
-    console.log('  /mode /dry-run /profile');
+    console.log('  /mode /model /dry-run /profile');
     console.log('Tasks:');
     console.log('  /decompose /step /next /skip /progress');
     console.log('System:');
@@ -174,6 +174,51 @@ const handlers: Record<string, CommandHandler> = {
 
     setMode(newMode as SessionMode);
     console.log(success(`Mode set to: ${newMode}`));
+  },
+  model: (ctx) => {
+    const subcommand = ctx.args[0]?.toLowerCase();
+    const currentModel = getModel();
+
+    // /model - show current
+    if (!subcommand) {
+      console.log(`Current model: ${currentModel}`);
+      return;
+    }
+
+    // /model list - show all
+    if (subcommand === 'list') {
+      console.log('Available models:');
+      for (const m of ZAI_MODELS) {
+        const marker = m.id === currentModel ? '*' : ' ';
+        console.log(`  ${marker} ${m.id.padEnd(10)} (${m.description})`);
+      }
+      console.log('');
+      console.log(`Current: ${currentModel}`);
+      return;
+    }
+
+    // /model set <id> - change model
+    if (subcommand === 'set') {
+      const modelId = ctx.args[1];
+      if (!modelId) {
+        console.log('Usage: /model set <model-id>');
+        console.log('Run /model list to see available models.');
+        return;
+      }
+
+      if (!AVAILABLE_MODELS.includes(modelId)) {
+        console.log(error(`Invalid model: ${modelId}`));
+        console.log('Run /model list to see available models.');
+        return;
+      }
+
+      setModel(modelId);
+      console.log(success(`Model set: ${modelId}`));
+      return;
+    }
+
+    // Unknown subcommand
+    console.log('Usage: /model [list | set <model-id>]');
   },
   plan: async () => {
     console.log('Planning...');

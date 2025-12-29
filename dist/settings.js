@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AVAILABLE_MODELS = void 0;
+exports.AVAILABLE_MODELS = exports.ZAI_MODELS = void 0;
 exports.loadSettings = loadSettings;
 exports.saveSettings = saveSettings;
 exports.getSetting = getSetting;
@@ -53,9 +53,14 @@ const path = __importStar(require("path"));
 const os = __importStar(require("os"));
 const SETTINGS_FILE = path.join(os.homedir(), '.zai', 'settings.json');
 const PROJECT_SETTINGS_FILE = '.zai/settings.json';
+exports.ZAI_MODELS = [
+    { id: 'glm-4.7', name: 'GLM-4.7', description: 'Flagship, default' },
+    { id: 'glm-4.6', name: 'GLM-4.6', description: 'Advanced coding & reasoning' },
+    { id: 'glm-4.5', name: 'GLM-4.5', description: 'General purpose' },
+];
 const DEFAULT_SETTINGS = {
     model: {
-        current: 'claude-sonnet-4-20250514',
+        current: 'glm-4.7',
     },
     ui: {
         asciiLogo: 'on',
@@ -78,13 +83,8 @@ const DEFAULT_SETTINGS = {
     },
     firstRun: true,
 };
-// Available models
-exports.AVAILABLE_MODELS = [
-    'claude-sonnet-4-20250514',
-    'claude-3-5-sonnet-20241022',
-    'claude-3-5-haiku-20241022',
-    'claude-3-opus-20240229',
-];
+// Available model IDs
+exports.AVAILABLE_MODELS = exports.ZAI_MODELS.map(m => m.id);
 let cachedSettings = null;
 function loadSettings() {
     if (cachedSettings)

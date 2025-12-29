@@ -31,9 +31,22 @@ export interface Settings {
   firstRun: boolean;
 }
 
+// Z.ai model definitions
+export interface ModelDefinition {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export const ZAI_MODELS: ModelDefinition[] = [
+  { id: 'glm-4.7', name: 'GLM-4.7', description: 'Flagship, default' },
+  { id: 'glm-4.6', name: 'GLM-4.6', description: 'Advanced coding & reasoning' },
+  { id: 'glm-4.5', name: 'GLM-4.5', description: 'General purpose' },
+];
+
 const DEFAULT_SETTINGS: Settings = {
   model: {
-    current: 'claude-sonnet-4-20250514',
+    current: 'glm-4.7',
   },
   ui: {
     asciiLogo: 'on',
@@ -57,13 +70,8 @@ const DEFAULT_SETTINGS: Settings = {
   firstRun: true,
 };
 
-// Available models
-export const AVAILABLE_MODELS = [
-  'claude-sonnet-4-20250514',
-  'claude-3-5-sonnet-20241022',
-  'claude-3-5-haiku-20241022',
-  'claude-3-opus-20240229',
-];
+// Available model IDs
+export const AVAILABLE_MODELS = ZAI_MODELS.map(m => m.id);
 
 let cachedSettings: Settings | null = null;
 

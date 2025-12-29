@@ -17,6 +17,7 @@ const COMMANDS = [
     { name: 'reset', description: 'Reset session state' },
     { name: 'exit', description: 'Exit zcode' },
     { name: 'mode', description: 'Set mode' },
+    { name: 'model', description: 'Select AI model' },
     { name: 'dry-run', description: 'Toggle dry-run mode' },
     { name: 'profile', description: 'Manage profiles' },
     { name: 'settings', description: 'Open settings menu' },

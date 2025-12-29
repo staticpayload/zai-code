@@ -211,7 +211,7 @@ function httpsPost(urlString, options = {}) {
         req.end();
     });
 }
-const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
+const DEFAULT_MODEL = 'glm-4.7';
 const DEFAULT_MAX_TOKENS = 4096;
 async function makeRequest(url, anthropicRequest, apiKey) {
     try {
