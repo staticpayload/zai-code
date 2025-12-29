@@ -34,7 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-const interactive_1 = require("./interactive");
+const tui_1 = require("./tui");
 const auth_1 = require("./auth");
 const runtime_1 = require("./runtime");
 const apply_1 = require("./apply");
@@ -55,12 +55,12 @@ async function handleDefault() {
     if ((0, settings_1.isFirstRun)()) {
         (0, settings_1.markFirstRunComplete)();
     }
-    await (0, interactive_1.startInteractive)({
+    // Launch blessed TUI
+    await (0, tui_1.startTUI)({
         projectName: path.basename(session.workingDirectory),
         restored,
         onExit: () => {
             ws.saveState();
-            process.exit(0);
         },
     });
 }
