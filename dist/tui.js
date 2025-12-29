@@ -221,6 +221,8 @@ async function startTUI(options) {
         width: '100%-5',
         height: 1,
         inputOnFocus: true,
+        keys: true,
+        mouse: true,
         style: {
             fg: theme.fg,
             bg: theme.bg,
