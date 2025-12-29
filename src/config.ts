@@ -8,7 +8,7 @@ export const STATE_PATH = path.join(CONFIG_DIR, 'state.json');
 
 const DEFAULT_CONFIG = {
   api: {
-    baseUrl: 'https://open.bigmodel.cn/api/paas/v4/',
+    baseUrl: 'https://api.z.ai/api/coding/paas/v4/',
   },
 };
 

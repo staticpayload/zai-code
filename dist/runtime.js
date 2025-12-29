@@ -259,7 +259,7 @@ function extractOutputText(chatResponse) {
 }
 async function execute(request, apiKey) {
     const config = (0, config_1.loadConfig)();
-    const baseUrl = config.api?.baseUrl || 'https://open.bigmodel.cn/api/paas/v4/';
+    const baseUrl = config.api?.baseUrl || 'https://api.z.ai/api/coding/paas/v4/';
     const url = baseUrl.endsWith('/') ? `${baseUrl}chat/completions` : `${baseUrl}/chat/completions`;
     const model = request.model || (0, settings_1.getModel)();
     const maxTokens = request.maxTokens || DEFAULT_MAX_TOKENS;
