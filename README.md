@@ -1,115 +1,254 @@
 # Z.ai Code
 
-A Z.ai-native AI code editor — CLI-first, interactive editor shell.
+```
+ ███████╗ █████╗ ██╗     ██████╗ ██████╗ ██████╗ ███████╗
+ ╚══███╔╝██╔══██╗██║    ██╔════╝██╔═══██╗██╔══██╗██╔════╝
+   ███╔╝ ███████║██║    ██║     ██║   ██║██║  ██║█████╗  
+  ███╔╝  ██╔══██║██║    ██║     ██║   ██║██║  ██║██╔══╝  
+ ███████╗██║  ██║██║    ╚██████╗╚██████╔╝██████╔╝███████╗
+ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝
+```
 
-**This tool uses Z.ai API exclusively.** No other AI providers.
+**A Z.ai-native AI code editor — CLI-first, interactive editor shell.**
 
-## Features
+> ⚠️ **DISCLAIMER**: This project is **NOT** affiliated with, endorsed by, or sponsored by Z.ai or Anthropic. It is an independent, open-source project that uses the Z.ai API.
 
-- **Interactive editor shell** — not a chatbot, a code editor
-- **Plan → Diff → Apply workflow** — no auto-execution
-- **Keyboard-driven settings menu** — BIOS-style configuration
-- **Model switching** — select from available Z.ai models
-- **Execution profiles** — safe, balanced, fast presets
-- **Git awareness** — branch, dirty state, warnings
-- **Dry-run mode** — preview without applying
-- **Undo/rollback** — revert last operation
-- **Task history** — audit log of all operations
-- **Safe file operations** — binary blocked, large files warned
+---
 
-## Requirements
+## ✨ Features
 
-- Node.js 18 or higher
-- Z.ai API key
+```
+┌─────────────────────────────────────────────────────────────┐
+│  ► Interactive editor shell — not a chatbot                │
+│  ► Plan → Diff → Apply workflow — no auto-execution        │
+│  ► Keyboard-driven settings — BIOS-style config            │
+│  ► Model switching — select Z.ai models                    │
+│  ► Execution profiles — safe / balanced / fast             │
+│  ► Git awareness — branch, dirty state, warnings           │
+│  ► Dry-run mode — preview without applying                 │
+│  ► Undo/rollback — revert last operation                   │
+│  ► Task history — audit log of all operations              │
+│  ► Safe file ops — binary blocked, large files warned      │
+└─────────────────────────────────────────────────────────────┘
+```
 
-## Installation
+---
+
+## 📦 Installation
 
 ```bash
 npm install -g @staticpayload/zai-code
 ```
 
-Or run directly:
+Or run directly with npx:
 
 ```bash
 npx @staticpayload/zai-code
 ```
 
-## Usage
+---
+
+## 🚀 Quick Start
 
 ```bash
 zcode
 ```
 
-This opens the interactive editor shell. The prompt shows current state:
+This opens the interactive editor shell:
 
 ```
+ _____ ___  ___
+|__  // _ |/  /
+  / // __ | __|
+ /___\___|___|  code
+
+Z.ai Code — project: my-project
+Mode: edit | State: clean
+
 [edit][clean]> 
 ```
 
-### Commands
+---
 
-**Navigation:**
-- `/help` — show commands
-- `/context` — show current context
-- `/files` — list open files
-- `/open <path>` — add file to context
+## 📋 Commands
 
-**Execution:**
-- `/plan` — generate execution plan
-- `/generate` — create file changes
-- `/diff` — review pending changes
-- `/apply` — apply changes
-- `/undo` — rollback last operation
+### Navigation
+```
+┌────────────┬──────────────────────────────────┐
+│ Command    │ Description                      │
+├────────────┼──────────────────────────────────┤
+│ /help      │ Show all commands                │
+│ /context   │ Show current context             │
+│ /files     │ List open files                  │
+│ /open      │ Add file to context              │
+│ /workspace │ Show workspace info              │
+└────────────┴──────────────────────────────────┘
+```
 
-**Modes:**
-- `/mode <edit|explain|review|debug>` — set mode
-- `/dry-run on|off` — toggle dry-run
-- `/profile list|set <name>` — manage profiles
+### Execution
+```
+┌────────────┬──────────────────────────────────┐
+│ Command    │ Description                      │
+├────────────┼──────────────────────────────────┤
+│ /plan      │ Generate execution plan          │
+│ /generate  │ Create file changes              │
+│ /diff      │ Review pending changes           │
+│ /apply     │ Apply changes                    │
+│ /undo      │ Rollback last operation          │
+└────────────┴──────────────────────────────────┘
+```
 
-**Tasks:**
-- `/decompose` — break task into steps
-- `/step` — plan current step
-- `/next` — complete step and advance
+### Modes & Profiles
+```
+┌─────────────────┬──────────────────────────────────┐
+│ Command         │ Description                      │
+├─────────────────┼──────────────────────────────────┤
+│ /mode <name>    │ Set mode (edit/explain/review)   │
+│ /dry-run on|off │ Toggle dry-run mode              │
+│ /profile list   │ List execution profiles          │
+│ /profile set    │ Apply a profile                  │
+└─────────────────┴──────────────────────────────────┘
+```
 
-**System:**
-- `/settings` — open interactive settings menu
-- `/git` — show repository status
-- `/exec <cmd>` — run allowed shell command
-- `/history` — view task history
-- `/doctor` — system health check
+### Multi-Step Tasks
+```
+┌────────────┬──────────────────────────────────┐
+│ Command    │ Description                      │
+├────────────┼──────────────────────────────────┤
+│ /decompose │ Break task into steps            │
+│ /step      │ Plan current step                │
+│ /next      │ Complete and advance             │
+│ /skip      │ Skip current step                │
+│ /progress  │ Show task progress               │
+└────────────┴──────────────────────────────────┘
+```
 
-### Workflow
+### System
+```
+┌────────────┬──────────────────────────────────┐
+│ Command    │ Description                      │
+├────────────┼──────────────────────────────────┤
+│ /settings  │ Open interactive settings menu   │
+│ /git       │ Show repository status           │
+│ /exec      │ Run allowed shell command        │
+│ /history   │ View task history                │
+│ /doctor    │ System health check              │
+│ /reset     │ Reset session                    │
+│ /exit      │ Exit zcode                       │
+└────────────┴──────────────────────────────────┘
+```
 
-1. Enter a task: `add error handling to auth.ts`
-2. System detects intent: `Intent: CODE_EDIT`
-3. Run `/plan` to generate a plan
-4. Run `/generate` to create changes
-5. Run `/diff` to review
-6. Run `/apply` to execute
+---
 
-No changes are made without explicit `/apply`.
+## 🔧 Workflow
 
-## Settings
+```
+┌──────────────────────────────────────────────────────────────┐
+│                                                              │
+│   1. Enter a task                                            │
+│      └── "add error handling to auth.ts"                     │
+│                                                              │
+│   2. System detects intent                                   │
+│      └── Intent: CODE_EDIT                                   │
+│                                                              │
+│   3. Run /plan                                               │
+│      └── Plan generated. Steps: 3                            │
+│                                                              │
+│   4. Run /generate                                           │
+│      └── Changes generated. Files: 2                         │
+│                                                              │
+│   5. Run /diff                                               │
+│      └── Review changes before applying                      │
+│                                                              │
+│   6. Run /apply                                              │
+│      └── Applied. Session clean.                             │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**No changes are made without explicit `/apply`.**
+
+---
+
+## ⚙️ Settings Menu
 
 Run `/settings` to open the interactive menu:
 
-- **Model** — select AI model
+```
+┌────────────────────────────────────────────────┐
+│ Settings                                       │
+├────────────────────────────────────────────────┤
+│ [Model] UI Execution Context Debug Exit        │
+├────────────────────────────────────────────────┤
+│   Select AI model for execution                │
+│ > Model: [claude-sonnet-4] claude-3-5-sonnet   │
+│                                                │
+│                                                │
+├────────────────────────────────────────────────┤
+│                                                │
+├────────────────────────────────────────────────┤
+│ ↑↓ navigate  ←→ change  Tab section  Esc exit │
+└────────────────────────────────────────────────┘
+```
+
+### Sections:
+- **Model** — Select AI model
 - **UI** — ASCII logo, colors, prompt style
-- **Execution** — confirmation mode, iteration limits
-- **Context** — file scope, token limits
-- **Debug** — logging options
+- **Execution** — Confirmation mode, iteration limits
+- **Context** — File scope, token limits
+- **Debug** — Logging options
 
-Navigate with arrow keys, Tab between sections, Esc to exit.
+---
 
-## Configuration
+## 📁 Configuration
 
-Global settings: `~/.zai/settings.json`
-Project settings: `.zai/settings.json` (overrides global)
+```
+~/.zai/
+├── settings.json      # Global settings
+├── config.json        # API configuration
+├── state.json         # Session state
+└── history.log        # Task history
 
-## License
+.zai/
+└── settings.json      # Project-specific overrides
+```
 
-MIT
+---
 
-## Author
+## 🔒 Safety Features
 
-StaticPayload <chaitanyamishra.ai@gmail.com>
+```
+┌─────────────────────────────────────────────────────────────┐
+│  ✓ No auto-execution — explicit /apply required            │
+│  ✓ Dry-run mode — preview changes without applying         │
+│  ✓ Undo/rollback — revert last operation                   │
+│  ✓ Git warnings — alerts on dirty working tree             │
+│  ✓ Binary blocked — prevents binary file modifications     │
+│  ✓ Large file warnings — alerts on files >50KB             │
+│  ✓ Shell allowlist — only safe commands permitted          │
+│  ✓ Bounded loops — max iterations enforced                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 📜 Requirements
+
+- Node.js 18 or higher
+- Z.ai API key
+
+---
+
+## 📄 License
+
+GPL-3.0
+
+---
+
+## 👤 Author
+
+**StaticPayload** — [GitHub](https://github.com/staticpayload)
+
+---
+
+> ⚠️ **DISCLAIMER**: This project is an independent, open-source tool. It is **NOT** affiliated with, endorsed by, or sponsored by Z.ai, Anthropic, or any related entities. Use of this tool requires your own Z.ai API key and is subject to Z.ai's terms of service.
