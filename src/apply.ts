@@ -135,6 +135,18 @@ export function applyFileOperation(
   }
   const resolvedPath = validation.resolved;
 
+  // Block binary files
+  const binaryExtensions = ['.exe', '.dll', '.so', '.dylib', '.bin', '.o', '.a', '.lib', '.png', '.jpg', '.jpeg', '.gif', '.ico', '.pdf', '.zip', '.tar', '.gz', '.rar'];
+  const ext = path.extname(filePath).toLowerCase();
+  if (binaryExtensions.includes(ext)) {
+    return { success: false, error: 'Binary file modification blocked' };
+  }
+
+  // Warn on large content
+  if (content && content.length > 50000) {
+    console.log(`Warning: Large file (${Math.round(content.length / 1000)}KB)`);
+  }
+
   // Dry run - just validate
   if (options?.dryRun) {
     switch (operation) {

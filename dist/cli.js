@@ -55,6 +55,7 @@ async function handleDefault() {
     // Render startup
     console.log((0, ui_1.renderStartup)(projectName));
     console.log((0, ui_1.renderStatus)(session));
+    console.log((0, ui_1.renderStatusBar)(session));
     // Show warnings
     const warnings = (0, ui_1.getWarnings)(session);
     if (warnings.length > 0) {

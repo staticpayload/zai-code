@@ -4,6 +4,7 @@ exports.ASCII_LOGO = void 0;
 exports.renderStartup = renderStartup;
 exports.getPrompt = getPrompt;
 exports.renderStatus = renderStatus;
+exports.renderStatusBar = renderStatusBar;
 exports.getWarnings = getWarnings;
 exports.success = success;
 exports.warning = warning;
@@ -12,6 +13,8 @@ exports.dim = dim;
 exports.info = info;
 exports.hint = hint;
 const settings_1 = require("./settings");
+const git_1 = require("./git");
+const profiles_1 = require("./profiles");
 // Colors - only if enabled
 function getColors() {
     const enabled = (0, settings_1.shouldShowColor)();
@@ -68,11 +71,15 @@ function getFocus(session) {
     }
     return null;
 }
-// Build prompt: [mode][state][focus]>
+// Build prompt: [mode][dry-run?][state][focus]>
 function getPrompt(session) {
     const state = getStateLabel(session);
     const focus = getFocus(session);
-    let prompt = `[${session.mode}][${state}]`;
+    let prompt = `[${session.mode}]`;
+    if (session.dryRun) {
+        prompt += '[dry-run]';
+    }
+    prompt += `[${state}]`;
     if (focus) {
         prompt += `[${focus}]`;
     }
@@ -84,6 +91,24 @@ function renderStatus(session) {
     const c = getColors();
     const state = getStateLabel(session);
     return `${c.dim}Mode: ${session.mode} | State: ${state}${c.reset}`;
+}
+// Status bar: git | model | profile | pending
+function renderStatusBar(session) {
+    const c = getColors();
+    const gitInfo = (0, git_1.getGitInfo)(session.workingDirectory);
+    const gitStatus = (0, git_1.formatGitStatus)(gitInfo);
+    const model = (0, settings_1.getModel)().split('-').slice(0, 2).join('-'); // Shorten model name
+    const profile = (0, profiles_1.getActiveProfileName)();
+    const pending = session.pendingActions ? (session.pendingActions.files?.length || 0) + (session.pendingActions.diffs?.length || 0) : 0;
+    const parts = [
+        gitStatus,
+        `model:${model}`,
+        `profile:${profile}`,
+    ];
+    if (pending > 0) {
+        parts.push(`pending:${pending}`);
+    }
+    return c.dim + parts.join(' | ') + c.reset;
 }
 // Contextual warnings
 function getWarnings(session) {

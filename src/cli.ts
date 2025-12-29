@@ -7,7 +7,7 @@ import { applyResponse } from './apply';
 import { collectWorkspace, buildContextString } from './workspace';
 import { getSession } from './session';
 import { getWorkspace } from './workspace_model';
-import { renderStartup, renderStatus, getWarnings, dim } from './ui';
+import { renderStartup, renderStatus, renderStatusBar, getWarnings, dim } from './ui';
 import { markFirstRunComplete, isFirstRun } from './settings';
 import * as path from 'path';
 
@@ -32,6 +32,7 @@ async function handleDefault(): Promise<void> {
   // Render startup
   console.log(renderStartup(projectName));
   console.log(renderStatus(session));
+  console.log(renderStatusBar(session));
 
   // Show warnings
   const warnings = getWarnings(session);
