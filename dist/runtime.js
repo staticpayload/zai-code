@@ -41,6 +41,7 @@ const http = __importStar(require("http"));
 const url_1 = require("url");
 const config_1 = require("./config");
 const project_memory_1 = require("./context/project_memory");
+const settings_1 = require("./settings");
 exports.RESPONSE_SCHEMA = {
     type: 'object',
     properties: {
@@ -263,7 +264,7 @@ async function execute(request, apiKey) {
     const config = (0, config_1.loadConfig)();
     const baseUrl = config.api?.baseUrl || 'https://api.z.ai/api/paas/v4/';
     const url = baseUrl.endsWith('/') ? `${baseUrl}messages` : `${baseUrl}/messages`;
-    const model = request.model || DEFAULT_MODEL;
+    const model = request.model || (0, settings_1.getModel)();
     const maxTokens = request.maxTokens || DEFAULT_MAX_TOKENS;
     const enforceSchema = request.enforceSchema !== false; // Default to true
     // Use provided schema or default to RESPONSE_SCHEMA

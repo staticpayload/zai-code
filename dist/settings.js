@@ -33,26 +33,53 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.AVAILABLE_MODELS = void 0;
 exports.loadSettings = loadSettings;
 exports.saveSettings = saveSettings;
 exports.getSetting = getSetting;
-exports.setSetting = setSetting;
-exports.setNestedSetting = setNestedSetting;
+exports.getModel = getModel;
+exports.setModel = setModel;
 exports.markFirstRunComplete = markFirstRunComplete;
 exports.isFirstRun = isFirstRun;
 exports.shouldShowColor = shouldShowColor;
 exports.shouldShowLogo = shouldShowLogo;
+exports.setNestedSetting = setNestedSetting;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const os = __importStar(require("os"));
 const SETTINGS_FILE = path.join(os.homedir(), '.zai', 'settings.json');
 const DEFAULT_SETTINGS = {
+    model: {
+        current: 'claude-sonnet-4-20250514',
+    },
     ui: {
         asciiLogo: 'on',
         color: 'auto',
+        promptStyle: 'compact',
+    },
+    execution: {
+        confirmationMode: 'strict',
+        maxPlanIterations: 5,
+        allowShellExec: false,
+    },
+    context: {
+        scope: 'open',
+        maxTokens: 50000,
+    },
+    debug: {
+        logging: false,
+        errorDetail: 'brief',
+        dumpState: false,
     },
     firstRun: true,
 };
+// Available models
+exports.AVAILABLE_MODELS = [
+    'claude-sonnet-4-20250514',
+    'claude-3-5-sonnet-20241022',
+    'claude-3-5-haiku-20241022',
+    'claude-3-opus-20240229',
+];
 let cachedSettings = null;
 function loadSettings() {
     if (cachedSettings)
@@ -60,8 +87,9 @@ function loadSettings() {
     try {
         if (fs.existsSync(SETTINGS_FILE)) {
             const content = fs.readFileSync(SETTINGS_FILE, 'utf-8');
-            const parsed = JSON.parse(content);
-            cachedSettings = { ...DEFAULT_SETTINGS, ...parsed };
+            const loaded = JSON.parse(content);
+            // Deep merge with defaults
+            cachedSettings = deepMerge(DEFAULT_SETTINGS, loaded);
             return cachedSettings;
         }
     }
@@ -70,6 +98,18 @@ function loadSettings() {
     }
     cachedSettings = { ...DEFAULT_SETTINGS };
     return cachedSettings;
+}
+function deepMerge(defaults, overrides) {
+    const result = { ...defaults };
+    for (const key in overrides) {
+        if (overrides[key] !== null && typeof overrides[key] === 'object' && !Array.isArray(overrides[key])) {
+            result[key] = deepMerge(defaults[key], overrides[key]);
+        }
+        else if (overrides[key] !== undefined) {
+            result[key] = overrides[key];
+        }
+    }
+    return result;
 }
 function saveSettings(settings) {
     const dir = path.dirname(SETTINGS_FILE);
@@ -82,27 +122,13 @@ function saveSettings(settings) {
 function getSetting(key) {
     return loadSettings()[key];
 }
-function setSetting(key, value) {
-    const settings = loadSettings();
-    settings[key] = value;
-    saveSettings(settings);
+function getModel() {
+    return loadSettings().model.current;
 }
-function setNestedSetting(path, value) {
+function setModel(model) {
     const settings = loadSettings();
-    const parts = path.split('.');
-    if (parts[0] === 'ui') {
-        if (parts[1] === 'asciiLogo' && (value === 'on' || value === 'off')) {
-            settings.ui.asciiLogo = value;
-            saveSettings(settings);
-            return true;
-        }
-        if (parts[1] === 'color' && (value === 'auto' || value === 'on' || value === 'off')) {
-            settings.ui.color = value;
-            saveSettings(settings);
-            return true;
-        }
-    }
-    return false;
+    settings.model.current = model;
+    saveSettings(settings);
 }
 function markFirstRunComplete() {
     const settings = loadSettings();
@@ -118,10 +144,37 @@ function shouldShowColor() {
         return false;
     if (settings.ui.color === 'on')
         return true;
-    // auto: check terminal
     return process.stdout.isTTY && process.env.TERM !== 'dumb';
 }
 function shouldShowLogo() {
     return loadSettings().ui.asciiLogo === 'on';
+}
+function setNestedSetting(path, value) {
+    const settings = loadSettings();
+    const parts = path.split('.');
+    // Handle all nested settings
+    try {
+        let obj = settings;
+        for (let i = 0; i < parts.length - 1; i++) {
+            obj = obj[parts[i]];
+            if (!obj)
+                return false;
+        }
+        const key = parts[parts.length - 1];
+        // Type coercion
+        if (value === 'true')
+            obj[key] = true;
+        else if (value === 'false')
+            obj[key] = false;
+        else if (!isNaN(Number(value)))
+            obj[key] = Number(value);
+        else
+            obj[key] = value;
+        saveSettings(settings);
+        return true;
+    }
+    catch {
+        return false;
+    }
 }
 //# sourceMappingURL=settings.js.map

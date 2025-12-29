@@ -3,6 +3,7 @@ import * as http from 'http';
 import { URL } from 'url';
 import { loadConfig } from './config';
 import { getSystemPrompt } from './context/project_memory';
+import { getModel } from './settings';
 
 export interface ResponseSchema {
   status: 'success' | 'error' | 'partial';
@@ -350,7 +351,7 @@ export async function execute(
   const baseUrl = (config.api as { baseUrl?: string })?.baseUrl || 'https://api.z.ai/api/paas/v4/';
   const url = baseUrl.endsWith('/') ? `${baseUrl}messages` : `${baseUrl}/messages`;
 
-  const model = request.model || DEFAULT_MODEL;
+  const model = request.model || getModel();
   const maxTokens = request.maxTokens || DEFAULT_MAX_TOKENS;
   const enforceSchema = request.enforceSchema !== false; // Default to true
 
