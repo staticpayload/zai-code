@@ -48,6 +48,17 @@ exports.PLAN_SCHEMA = {
         error: { type: 'string' },
     },
 };
+// Get default mode from settings (lazy load to avoid circular dependency)
+function getDefaultModeFromSettings() {
+    try {
+        // Dynamic import to avoid circular dependency
+        const { getDefaultMode } = require('./settings');
+        return getDefaultMode();
+    }
+    catch {
+        return 'edit';
+    }
+}
 // Create a new session state
 function createSession(workingDirectory) {
     return {
@@ -55,7 +66,7 @@ function createSession(workingDirectory) {
         lastPlan: null,
         lastDiff: null,
         pendingActions: null,
-        mode: 'edit',
+        mode: getDefaultModeFromSettings(),
         dryRun: false,
         workingDirectory: workingDirectory || process.cwd(),
         currentIntent: null,

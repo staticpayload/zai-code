@@ -33,23 +33,12 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MAX_FILES = exports.MAX_FILE_SIZE = exports.MAX_CONTEXT_TOKENS = void 0;
 exports.indexWorkspace = indexWorkspace;
-exports.scoreFileRelevance = scoreFileRelevance;
-exports.summarizeFile = summarizeFile;
 exports.buildContext = buildContext;
 exports.formatContextForModel = formatContextForModel;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
-// Context size limits
-const MAX_CONTEXT_TOKENS = 50000; // Approximate max tokens
-exports.MAX_CONTEXT_TOKENS = MAX_CONTEXT_TOKENS;
-const MAX_FILE_SIZE = 50000; // Max bytes per file
-exports.MAX_FILE_SIZE = MAX_FILE_SIZE;
-const MAX_FILES = 50; // Max files to include
-exports.MAX_FILES = MAX_FILES;
-const CHARS_PER_TOKEN = 4; // Approximate chars per token
-// File extensions by priority
+// File extensions priority for code context
 const EXTENSION_PRIORITY = {
     '.ts': 10,
     '.tsx': 10,
@@ -76,7 +65,7 @@ const EXTENSION_PRIORITY = {
     '.sh': 5,
     '.bash': 5,
 };
-// Directories to always skip
+// Directories to skip
 const SKIP_DIRS = new Set([
     'node_modules',
     '.git',
@@ -85,238 +74,155 @@ const SKIP_DIRS = new Set([
     'dist',
     'build',
     'out',
-    'target',
-    '__pycache__',
-    '.cache',
     '.next',
     '.nuxt',
-    'vendor',
+    '__pycache__',
+    '.pytest_cache',
     'coverage',
     '.nyc_output',
+    'vendor',
+    '.zai',
 ]);
-// Files to always skip
+// Files to skip
 const SKIP_FILES = new Set([
     'package-lock.json',
     'yarn.lock',
     'pnpm-lock.yaml',
-    'composer.lock',
-    'Gemfile.lock',
-    'Cargo.lock',
-    'go.sum',
+    '.DS_Store',
+    'Thumbs.db',
 ]);
-// Index workspace and return file list with metadata
-function indexWorkspace(rootPath) {
+// Estimate tokens from content (rough: 1 token ≈ 4 chars)
+function estimateTokens(content) {
+    return Math.ceil(content.length / 4);
+}
+// Index workspace files
+function indexWorkspace(workingDir, maxDepth = 5) {
     const files = [];
-    // Validate root path exists
-    if (!fs.existsSync(rootPath)) {
-        return files;
-    }
-    function walk(dir, depth = 0) {
-        if (depth > 10)
-            return; // Max depth
+    function walk(dir, depth) {
+        if (depth > maxDepth)
+            return;
+        let entries;
         try {
-            const entries = fs.readdirSync(dir, { withFileTypes: true });
-            for (const entry of entries) {
-                const fullPath = path.join(dir, entry.name);
-                const relativePath = path.relative(rootPath, fullPath);
-                if (entry.isDirectory()) {
-                    if (!SKIP_DIRS.has(entry.name) && !entry.name.startsWith('.')) {
-                        walk(fullPath, depth + 1);
-                    }
-                }
-                else if (entry.isFile()) {
-                    if (SKIP_FILES.has(entry.name))
-                        continue;
-                    try {
-                        const stats = fs.statSync(fullPath);
-                        const ext = path.extname(entry.name).toLowerCase();
-                        // Skip binary and very large files
-                        if (stats.size > MAX_FILE_SIZE * 2)
-                            continue;
-                        const priority = EXTENSION_PRIORITY[ext] || 1;
-                        // Score based on extension priority and inverse of depth
-                        const score = priority * (10 - Math.min(depth, 9));
-                        files.push({
-                            path: relativePath,
-                            score,
-                            size: stats.size,
-                            extension: ext,
-                        });
-                    }
-                    catch {
-                        // Skip files we can't stat
-                    }
-                }
-            }
+            entries = fs.readdirSync(dir, { withFileTypes: true });
         }
         catch {
-            // Skip directories we can't read
+            return;
+        }
+        for (const entry of entries) {
+            const fullPath = path.join(dir, entry.name);
+            const relativePath = path.relative(workingDir, fullPath);
+            if (entry.isDirectory()) {
+                if (!SKIP_DIRS.has(entry.name) && !entry.name.startsWith('.')) {
+                    walk(fullPath, depth + 1);
+                }
+            }
+            else if (entry.isFile()) {
+                if (SKIP_FILES.has(entry.name))
+                    continue;
+                if (entry.name.startsWith('.'))
+                    continue;
+                const ext = path.extname(entry.name).toLowerCase();
+                const priority = EXTENSION_PRIORITY[ext] || 1;
+                let size = 0;
+                try {
+                    const stat = fs.statSync(fullPath);
+                    size = stat.size;
+                }
+                catch {
+                    continue;
+                }
+                // Skip very large files (> 100KB)
+                if (size > 100000)
+                    continue;
+                files.push({
+                    path: relativePath,
+                    score: priority,
+                    size,
+                    extension: ext,
+                });
+            }
         }
     }
-    walk(rootPath);
+    walk(workingDir, 0);
     return files;
 }
-// Score file relevance to a task
+// Score files based on relevance to intent
 function scoreFileRelevance(file, intent, intentType) {
     let score = file.score;
-    const intentLower = intent.toLowerCase();
-    const pathLower = file.path.toLowerCase();
-    // Boost if path contains words from intent
-    const intentWords = intentLower.split(/\s+/).filter(w => w.length > 3);
-    for (const word of intentWords) {
-        if (pathLower.includes(word)) {
+    const lowerPath = file.path.toLowerCase();
+    const lowerIntent = intent.toLowerCase();
+    // Boost files mentioned in intent
+    const words = lowerIntent.split(/\s+/);
+    for (const word of words) {
+        if (word.length > 2 && lowerPath.includes(word)) {
             score += 5;
         }
     }
     // Boost based on intent type
-    switch (intentType) {
-        case 'DEBUG':
-            // Prefer test files and error-related files
-            if (pathLower.includes('test') || pathLower.includes('spec')) {
-                score += 3;
-            }
-            if (pathLower.includes('error') || pathLower.includes('exception')) {
-                score += 3;
-            }
-            break;
-        case 'REFACTOR':
-            // Prefer main source files
-            if (pathLower.includes('src/') || pathLower.includes('lib/')) {
-                score += 3;
-            }
-            break;
-        case 'REVIEW':
-            // Prefer config and doc files
-            if (file.extension === '.md' || file.extension === '.json') {
-                score += 2;
-            }
-            break;
+    if (intentType === 'DEBUG' && (lowerPath.includes('test') || lowerPath.includes('spec'))) {
+        score += 3;
     }
-    // Penalize very large files
-    if (file.size > 10000) {
-        score -= 2;
+    if (intentType === 'REVIEW' && lowerPath.includes('readme')) {
+        score += 2;
     }
-    if (file.size > 30000) {
-        score -= 3;
+    // Boost entry points
+    if (lowerPath === 'index.ts' || lowerPath === 'index.js' || lowerPath === 'main.ts') {
+        score += 2;
     }
     return score;
 }
-// Summarize a large file to fit in context
-function summarizeFile(content, maxChars) {
-    if (maxChars <= 0) {
-        return { summary: '', truncated: true };
-    }
-    if (content.length <= maxChars) {
-        return { summary: content, truncated: false };
-    }
-    // Include first portion and last portion
-    const headSize = Math.floor(maxChars * 0.7);
-    const tailSize = Math.floor(maxChars * 0.2);
-    const truncationMessage = `\n\n... [${content.length - headSize - tailSize} chars truncated] ...\n\n`;
-    // Ensure we have room for the truncation message
-    const effectiveMaxChars = maxChars - truncationMessage.length;
-    if (effectiveMaxChars <= 0) {
-        return { summary: content.slice(0, maxChars), truncated: true };
-    }
-    const effectiveHeadSize = Math.floor(effectiveMaxChars * 0.7);
-    const effectiveTailSize = Math.floor(effectiveMaxChars * 0.2);
-    const head = content.slice(0, effectiveHeadSize);
-    const tail = content.slice(-effectiveTailSize);
-    const summary = `${head}${truncationMessage}${tail}`;
-    return { summary, truncated: true };
-}
-// Build context for a task
-function buildContext(rootPath, intent, intentType, additionalFiles = []) {
-    // Index workspace
-    const allFiles = indexWorkspace(rootPath);
-    // Score files by relevance
+// Build context for API call
+function buildContext(workingDir, intent, intentType, openFiles = [], maxTokens = 50000) {
+    const allFiles = indexWorkspace(workingDir);
+    // Score and sort files
     const scoredFiles = allFiles.map(f => ({
         ...f,
-        relevanceScore: scoreFileRelevance(f, intent, intentType),
+        score: scoreFileRelevance(f, intent, intentType),
     }));
-    // Sort by relevance score descending
-    scoredFiles.sort((a, b) => b.relevanceScore - a.relevanceScore);
-    // Add additional files with high priority
-    const additionalSet = new Set(additionalFiles.map(f => path.relative(rootPath, f)));
+    // Prioritize open files
+    for (const openFile of openFiles) {
+        const relative = path.relative(workingDir, openFile);
+        const found = scoredFiles.find(f => f.path === relative);
+        if (found) {
+            found.score += 20;
+        }
+    }
+    // Sort by score descending
+    scoredFiles.sort((a, b) => b.score - a.score);
     // Select files within token budget
-    const result = {
-        files: [],
-        totalTokens: 0,
-        fileCount: 0,
-        truncatedCount: 0,
-    };
-    const maxChars = MAX_CONTEXT_TOKENS * CHARS_PER_TOKEN;
-    let currentChars = 0;
-    // First, add explicitly requested files
-    for (const relPath of additionalSet) {
-        const fullPath = path.join(rootPath, relPath);
-        try {
-            const content = fs.readFileSync(fullPath, 'utf-8');
-            const { summary, truncated } = summarizeFile(content, Math.min(content.length, MAX_FILE_SIZE));
-            if (currentChars + summary.length > maxChars)
-                break;
-            result.files.push({
-                path: relPath,
-                content: summary,
-                truncated,
-            });
-            currentChars += summary.length;
-            result.fileCount++;
-            if (truncated)
-                result.truncatedCount++;
-        }
-        catch {
-            // Skip files we can't read
-        }
-    }
-    // Then add scored files
+    const selectedFiles = [];
+    let totalTokens = 0;
+    let truncated = false;
     for (const file of scoredFiles) {
-        if (result.fileCount >= MAX_FILES)
-            break;
-        if (currentChars >= maxChars)
-            break;
-        if (additionalSet.has(file.path))
+        const estimatedTokens = Math.ceil(file.size / 4);
+        if (totalTokens + estimatedTokens > maxTokens) {
+            truncated = true;
             continue;
-        const fullPath = path.join(rootPath, file.path);
-        try {
-            const content = fs.readFileSync(fullPath, 'utf-8');
-            const maxFileChars = Math.min(MAX_FILE_SIZE, Math.floor((maxChars - currentChars) / 2) // Leave room for other files
-            );
-            const { summary, truncated } = summarizeFile(content, maxFileChars);
-            if (currentChars + summary.length > maxChars)
-                break;
-            result.files.push({
-                path: file.path,
-                content: summary,
-                truncated,
-            });
-            currentChars += summary.length;
-            result.fileCount++;
-            if (truncated)
-                result.truncatedCount++;
         }
-        catch {
-            // Skip files we can't read
-        }
+        selectedFiles.push(file);
+        totalTokens += estimatedTokens;
     }
-    result.totalTokens = Math.ceil(currentChars / CHARS_PER_TOKEN);
-    return result;
+    return {
+        files: selectedFiles,
+        totalTokens,
+        truncated,
+    };
 }
-// Format context for model input
+// Format context for model
 function formatContextForModel(context) {
     if (context.files.length === 0) {
-        return 'No files in context.';
+        return '';
     }
-    let output = `Context: ${context.fileCount} files (~${context.totalTokens} tokens)`;
-    if (context.truncatedCount > 0) {
-        output += ` [${context.truncatedCount} truncated]`;
+    const parts = [];
+    for (const file of context.files.slice(0, 20)) {
+        try {
+            const content = fs.readFileSync(file.path, 'utf-8');
+            parts.push(`--- ${file.path} ---\n${content}\n`);
+        }
+        catch {
+            // Skip unreadable files
+        }
     }
-    output += '\n\n';
-    for (const file of context.files) {
-        output += `--- ${file.path}${file.truncated ? ' [truncated]' : ''} ---\n`;
-        output += file.content;
-        output += '\n\n';
-    }
-    return output;
+    return parts.join('\n');
 }
 //# sourceMappingURL=context_builder.js.map

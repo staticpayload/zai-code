@@ -44,6 +44,9 @@ exports.markFirstRunComplete = markFirstRunComplete;
 exports.isFirstRun = isFirstRun;
 exports.shouldShowColor = shouldShowColor;
 exports.shouldShowLogo = shouldShowLogo;
+exports.getDefaultMode = getDefaultMode;
+exports.setDefaultMode = setDefaultMode;
+exports.setAsciiLogo = setAsciiLogo;
 exports.setNestedSetting = setNestedSetting;
 exports.loadProjectSettings = loadProjectSettings;
 exports.getEffectiveSettings = getEffectiveSettings;
@@ -68,6 +71,7 @@ const DEFAULT_SETTINGS = {
         promptStyle: 'compact',
     },
     execution: {
+        defaultMode: 'edit',
         confirmationMode: 'strict',
         maxPlanIterations: 5,
         allowShellExec: false,
@@ -171,6 +175,19 @@ function shouldShowColor() {
 }
 function shouldShowLogo() {
     return loadSettings().ui.asciiLogo === 'on';
+}
+function getDefaultMode() {
+    return loadSettings().execution.defaultMode || 'edit';
+}
+function setDefaultMode(mode) {
+    const settings = loadSettings();
+    settings.execution.defaultMode = mode;
+    saveSettings(settings);
+}
+function setAsciiLogo(enabled) {
+    const settings = loadSettings();
+    settings.ui.asciiLogo = enabled ? 'on' : 'off';
+    saveSettings(settings);
 }
 function setNestedSetting(path, value) {
     const settings = loadSettings();

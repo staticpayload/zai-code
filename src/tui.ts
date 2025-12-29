@@ -121,6 +121,16 @@ function getPlaceholder(): string {
 const commandHistory: string[] = [];
 let historyIndex = -1;
 
+// Big ASCII Logo
+const ASCII_LOGO = `{bold}{cyan-fg}
+ ███████╗ █████╗ ██╗     ██████╗ ██████╗ ██████╗ ███████╗
+ ╚══███╔╝██╔══██╗██║    ██╔════╝██╔═══██╗██╔══██╗██╔════╝
+   ███╔╝ ███████║██║    ██║     ██║   ██║██║  ██║█████╗  
+  ███╔╝  ██╔══██║██║    ██║     ██║   ██║██║  ██║██╔══╝  
+ ███████╗██║  ██║██║    ╚██████╗╚██████╔╝██████╔╝███████╗
+ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝{/cyan-fg}{/bold}
+                    {gray-fg}AI-native code editor v1.4.3{/gray-fg}`;
+
 // Animated Robot Mascot Frames
 const MASCOT_FRAMES = [
     // Frame 1 - looking right
@@ -154,7 +164,7 @@ const MASCOT_FRAMES = [
 ];
 
 // Compact header with mascot
-const HEADER_WITH_MASCOT = `{bold}{cyan-fg}zai{/cyan-fg}{blue-fg}·{/blue-fg}{cyan-fg}code{/cyan-fg}{/bold} {gray-fg}v1.4.2{/gray-fg}`;
+const HEADER_WITH_MASCOT = `{bold}{cyan-fg}zai{/cyan-fg}{blue-fg}·{/blue-fg}{cyan-fg}code{/cyan-fg}{/bold} {gray-fg}v1.4.3{/gray-fg}`;
 
 const MINIMAL_LOGO = '{bold}{cyan-fg}⚡ zai·code{/cyan-fg}{/bold} {gray-fg}AI-native editor{/gray-fg}';
 
@@ -209,15 +219,13 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     let spinnerFrame = 0;
     let isProcessing = false;
     let currentTip = Math.floor(Math.random() * WELCOME_TIPS.length);
-    let mascotFrame = 0;
-    let mascotInterval: NodeJS.Timeout | null = null;
 
-    // Header with animated mascot
+    // Header with ASCII logo
     const header = blessed.box({
         top: 0,
         left: 0,
         width: '100%',
-        height: shouldShowLogo() ? 8 : 2,
+        height: shouldShowLogo() ? 9 : 2,
         tags: true,
         style: {
             fg: theme.fg,
@@ -225,59 +233,28 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         },
     });
 
-    // Update header with mascot animation
+    // Update header with logo
     function updateHeader() {
         if (shouldShowLogo()) {
-            const mascot = MASCOT_FRAMES[mascotFrame];
-            const title = `{bold}{cyan-fg}zai{/cyan-fg}{blue-fg}·{/blue-fg}{cyan-fg}code{/cyan-fg}{/bold} {gray-fg}v1.4.2{/gray-fg}`;
-            const subtitle = '{gray-fg}AI-native code editor{/gray-fg}';
-            
-            // Combine mascot with title
-            const mascotLines = mascot.split('\n');
-            const content = mascotLines.map((line, i) => {
-                if (i === 1) return line + '  ' + title;
-                if (i === 2) return line + '  ' + subtitle;
-                return line;
-            }).join('\n');
-            
-            header.setContent(content);
+            header.setContent(ASCII_LOGO);
+            header.height = 9;
         } else {
             header.setContent(MINIMAL_LOGO);
-        }
-    }
-
-    // Start mascot animation
-    function startMascotAnimation() {
-        if (mascotInterval) return;
-        mascotInterval = setInterval(() => {
-            mascotFrame = (mascotFrame + 1) % MASCOT_FRAMES.length;
-            updateHeader();
-            screen.render();
-        }, 2000); // Change every 2 seconds
-    }
-
-    // Stop mascot animation
-    function stopMascotAnimation() {
-        if (mascotInterval) {
-            clearInterval(mascotInterval);
-            mascotInterval = null;
+            header.height = 2;
         }
     }
 
     // Initialize header
     updateHeader();
-    if (shouldShowLogo()) {
-        startMascotAnimation();
-    }
 
     // Quick actions bar - keyboard shortcuts
     const quickActions = blessed.box({
-        top: shouldShowLogo() ? 8 : 2,
+        top: shouldShowLogo() ? 9 : 2,
         left: 0,
         width: '100%',
         height: 1,
         tags: true,
-        content: '{gray-fg}↑↓{/gray-fg} navigate  {gray-fg}Tab{/gray-fg} complete  {gray-fg}Enter{/gray-fg} select  {gray-fg}Esc{/gray-fg} close',
+        content: '{gray-fg}↑↓{/gray-fg} navigate  {gray-fg}Tab{/gray-fg} complete  {gray-fg}Enter{/gray-fg} select  {gray-fg}Esc{/gray-fg} close  {gray-fg}Shift+Tab{/gray-fg} mode',
         style: {
             fg: theme.fg,
             bg: theme.bg,
@@ -286,7 +263,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     });
 
     // Context/status line
-    const contextTop = shouldShowLogo() ? 9 : 3;
+    const contextTop = shouldShowLogo() ? 10 : 3;
     const contextLine = blessed.box({
         top: contextTop,
         left: 0,
@@ -682,18 +659,19 @@ export async function startTUI(options: TUIOptions): Promise<void> {
 
     function updatePalette(filter: string) {
         const query = filter.replace(/^\//, '').toLowerCase();
-        const filtered = COMMANDS.filter(c => 
+        filteredCommandsCache = COMMANDS.filter(c => 
             c.name.startsWith(query) || c.description.toLowerCase().includes(query)
-        );
+        ).slice(0, 10);
         
-        const items = filtered.slice(0, 10).map(c => {
+        const items = filteredCommandsCache.map(c => {
             const shortcut = c.shortcut ? ` {gray-fg}${c.shortcut}{/gray-fg}` : '';
             return `{bold}{cyan-fg}/${c.name}{/cyan-fg}{/bold}  ${c.description}${shortcut}`;
         });
         
         palette.setItems(items);
-        if (filtered.length > 0) {
+        if (filteredCommandsCache.length > 0) {
             palette.select(0);
+            paletteSelectedIndex = 0;
         }
     }
 
@@ -838,16 +816,17 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     // Track palette selection index manually
     let paletteSelectedIndex = 0;
     let fileSelectedIndex = 0;
+    let filteredCommandsCache: typeof COMMANDS = [];
 
     // Screen-level key handling for arrow keys (works better than input keypress)
     screen.key(['up'], () => {
-        if (showPalette) {
+        if (showPalette && filteredCommandsCache.length > 0) {
             paletteSelectedIndex = Math.max(0, paletteSelectedIndex - 1);
             palette.select(paletteSelectedIndex);
             screen.render();
             return;
         }
-        if (showFileAutocomplete) {
+        if (showFileAutocomplete && autocompleteFiles.length > 0) {
             fileSelectedIndex = Math.max(0, fileSelectedIndex - 1);
             fileAutocomplete.select(fileSelectedIndex);
             screen.render();
@@ -863,15 +842,15 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     });
 
     screen.key(['down'], () => {
-        if (showPalette) {
-            const maxIndex = Math.min(COMMANDS.length - 1, 9);
+        if (showPalette && filteredCommandsCache.length > 0) {
+            const maxIndex = filteredCommandsCache.length - 1;
             paletteSelectedIndex = Math.min(maxIndex, paletteSelectedIndex + 1);
             palette.select(paletteSelectedIndex);
             screen.render();
             return;
         }
-        if (showFileAutocomplete) {
-            const maxIndex = Math.min(autocompleteFiles.length - 1, 9);
+        if (showFileAutocomplete && autocompleteFiles.length > 0) {
+            const maxIndex = autocompleteFiles.length - 1;
             fileSelectedIndex = Math.min(maxIndex, fileSelectedIndex + 1);
             fileAutocomplete.select(fileSelectedIndex);
             screen.render();
@@ -893,13 +872,9 @@ export async function startTUI(options: TUIOptions): Promise<void> {
 
     // Tab completion
     screen.key(['tab'], () => {
-        if (showPalette) {
-            const filter = (input.getValue() || '').replace(/^\//, '').toLowerCase();
-            const filtered = COMMANDS.filter(c => 
-                c.name.startsWith(filter) || c.description.toLowerCase().includes(filter)
-            );
-            if (filtered[paletteSelectedIndex]) {
-                const cmd = filtered[paletteSelectedIndex];
+        if (showPalette && filteredCommandsCache.length > 0) {
+            if (filteredCommandsCache[paletteSelectedIndex]) {
+                const cmd = filteredCommandsCache[paletteSelectedIndex];
                 input.setValue('/' + cmd.name + ' ');
                 togglePalette(false);
                 paletteSelectedIndex = 0;
@@ -990,14 +965,9 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     input.on('submit', async (value: string) => {
         const inputValue = value || input.getValue() || '';
         
-        if (showPalette && inputValue.startsWith('/')) {
-            const filter = inputValue.replace(/^\//, '').toLowerCase();
-            const filteredCommands = COMMANDS.filter(c => 
-                c.name.startsWith(filter) || c.description.toLowerCase().includes(filter)
-            );
-
-            if (filteredCommands[paletteSelectedIndex]) {
-                const cmd = filteredCommands[paletteSelectedIndex];
+        if (showPalette && inputValue.startsWith('/') && filteredCommandsCache.length > 0) {
+            if (filteredCommandsCache[paletteSelectedIndex]) {
+                const cmd = filteredCommandsCache[paletteSelectedIndex];
                 const needsArgs = ['mode', 'model', 'open', 'read', 'cat', 'close', 'do', 'run', 'ask', 'fix', 'exec', 'search'].includes(cmd.name);
                 
                 if (needsArgs && !inputValue.includes(' ')) {
@@ -1058,36 +1028,40 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         screen.render();
     });
 
-    // SETTINGS MODAL
+    // SETTINGS MODAL - Completely rewritten for proper keyboard handling
     function showSettingsMenu() {
-        let settingsActive = true;
+        // Disable main input while settings is open
+        input.hide();
+        
         let currentSettings = loadSettings();
         const models = AVAILABLE_MODELS;
+        const modes: Array<'edit' | 'auto' | 'ask' | 'debug' | 'review' | 'explain'> = ['edit', 'auto', 'ask', 'debug', 'review', 'explain'];
         let selectedIndex = 0;
 
         const getListItems = () => [
-            `Model: ${currentSettings.model.current}`,
-            `Color: ${currentSettings.ui.color}`,
-            `Prompt: ${currentSettings.ui.promptStyle}`,
-            `Confirm: ${currentSettings.execution.confirmationMode}`,
-            `Shell Exec: ${currentSettings.execution.allowShellExec}`,
-            `Debug Log: ${currentSettings.debug.logging}`
+            `{cyan-fg}Model:{/cyan-fg}        ${currentSettings.model.current}`,
+            `{cyan-fg}Default Mode:{/cyan-fg} ${currentSettings.execution.defaultMode || 'edit'}`,
+            `{cyan-fg}ASCII Logo:{/cyan-fg}   ${currentSettings.ui.asciiLogo}`,
+            `{cyan-fg}Color:{/cyan-fg}        ${currentSettings.ui.color}`,
+            `{cyan-fg}Prompt Style:{/cyan-fg} ${currentSettings.ui.promptStyle}`,
+            `{cyan-fg}Confirm Mode:{/cyan-fg} ${currentSettings.execution.confirmationMode}`,
+            `{cyan-fg}Shell Exec:{/cyan-fg}   ${currentSettings.execution.allowShellExec}`,
+            `{cyan-fg}Debug Log:{/cyan-fg}    ${currentSettings.debug.logging}`
         ];
 
         const modal = blessed.box({
             parent: screen,
             top: 'center',
             left: 'center',
-            width: '50%',
-            height: '60%',
+            width: 50,
+            height: 16,
             border: { type: 'line' },
-            label: ' Settings ',
+            label: ' ⚙ Settings ',
             tags: true,
             style: {
                 bg: 'black',
                 fg: 'white',
                 border: { fg: 'cyan' },
-                label: { fg: 'cyan', bold: true }
             },
         });
 
@@ -1097,8 +1071,10 @@ export async function startTUI(options: TUIOptions): Promise<void> {
             left: 1,
             right: 1,
             bottom: 3,
-            keys: false, // We handle keys manually
-            mouse: false,
+            tags: true,
+            mouse: true,
+            keys: true,
+            vi: true,
             style: {
                 selected: { bg: 'blue', fg: 'white', bold: true },
                 item: { fg: 'white', bg: 'black' }
@@ -1110,11 +1086,13 @@ export async function startTUI(options: TUIOptions): Promise<void> {
             parent: modal,
             bottom: 1,
             left: 1,
-            content: '↑↓:navigate  Enter:toggle  Esc:save & exit',
+            tags: true,
+            content: '{gray-fg}↑↓{/gray-fg} navigate  {gray-fg}Enter{/gray-fg} toggle  {gray-fg}Esc{/gray-fg} save & exit',
             style: { fg: 'gray', bg: 'black' }
         });
 
         list.select(0);
+        list.focus();
         screen.render();
 
         function cycleValue() {
@@ -1122,17 +1100,24 @@ export async function startTUI(options: TUIOptions): Promise<void> {
                 const currIdx = models.indexOf(currentSettings.model.current);
                 const nextIdx = (currIdx + 1) % models.length;
                 currentSettings.model.current = models[nextIdx];
-            } else if (selectedIndex === 1) { // Color
-                const vals = ['auto', 'on', 'off'];
+            } else if (selectedIndex === 1) { // Default Mode
+                const currMode = currentSettings.execution.defaultMode || 'edit';
+                const currIdx = modes.indexOf(currMode as any);
+                const nextIdx = (currIdx + 1) % modes.length;
+                currentSettings.execution.defaultMode = modes[nextIdx];
+            } else if (selectedIndex === 2) { // ASCII Logo
+                currentSettings.ui.asciiLogo = currentSettings.ui.asciiLogo === 'on' ? 'off' : 'on';
+            } else if (selectedIndex === 3) { // Color
+                const vals: Array<'auto' | 'on' | 'off'> = ['auto', 'on', 'off'];
                 const n = (vals.indexOf(currentSettings.ui.color) + 1) % 3;
-                currentSettings.ui.color = vals[n] as any;
-            } else if (selectedIndex === 2) { // Prompt
+                currentSettings.ui.color = vals[n];
+            } else if (selectedIndex === 4) { // Prompt Style
                 currentSettings.ui.promptStyle = currentSettings.ui.promptStyle === 'compact' ? 'verbose' : 'compact';
-            } else if (selectedIndex === 3) { // Confirm
+            } else if (selectedIndex === 5) { // Confirm Mode
                 currentSettings.execution.confirmationMode = currentSettings.execution.confirmationMode === 'strict' ? 'normal' : 'strict';
-            } else if (selectedIndex === 4) { // Shell
+            } else if (selectedIndex === 6) { // Shell Exec
                 currentSettings.execution.allowShellExec = !currentSettings.execution.allowShellExec;
-            } else if (selectedIndex === 5) { // Debug
+            } else if (selectedIndex === 7) { // Debug Log
                 currentSettings.debug.logging = !currentSettings.debug.logging;
             }
             list.setItems(getListItems());
@@ -1141,40 +1126,45 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         }
 
         function closeSettings() {
-            if (!settingsActive) return;
-            settingsActive = false;
             saveSettings(currentSettings);
+            
+            // Update header if logo setting changed
+            updateHeader();
             updateStatusBar();
+            updateModeIndicator();
+            
             screen.remove(modal);
+            input.show();
             input.focus();
             screen.render();
-            output.log('{green-fg}Settings saved.{/green-fg}');
+            output.log('{green-fg}✓ Settings saved{/green-fg}');
         }
 
-        // Handle keys on screen level while settings is open
-        const settingsKeyHandler = (ch: string, key: any) => {
-            if (!settingsActive) return;
-            
-            if (key.name === 'escape') {
-                closeSettings();
-            } else if (key.name === 'up') {
-                selectedIndex = Math.max(0, selectedIndex - 1);
-                list.select(selectedIndex);
-                screen.render();
-            } else if (key.name === 'down') {
-                selectedIndex = Math.min(getListItems().length - 1, selectedIndex + 1);
-                list.select(selectedIndex);
-                screen.render();
-            } else if (key.name === 'enter' || key.name === 'return') {
-                cycleValue();
-            }
-        };
+        // List key handlers
+        list.key(['up', 'k'], () => {
+            selectedIndex = Math.max(0, selectedIndex - 1);
+            list.select(selectedIndex);
+            screen.render();
+        });
 
-        screen.on('keypress', settingsKeyHandler);
-        
-        // Cleanup when modal is destroyed
-        modal.on('destroy', () => {
-            screen.removeListener('keypress', settingsKeyHandler);
+        list.key(['down', 'j'], () => {
+            selectedIndex = Math.min(getListItems().length - 1, selectedIndex + 1);
+            list.select(selectedIndex);
+            screen.render();
+        });
+
+        list.key(['enter', 'space'], () => {
+            cycleValue();
+        });
+
+        list.key(['escape', 'q'], () => {
+            closeSettings();
+        });
+
+        // Mouse selection
+        list.on('select', (item: any, index: number) => {
+            selectedIndex = index;
+            cycleValue();
         });
     }
 
@@ -1206,7 +1196,6 @@ export async function startTUI(options: TUIOptions): Promise<void> {
 
     // Global Key Bindings
     screen.key(['C-c'], () => {
-        stopMascotAnimation();
         onExit?.();
         return process.exit(0);
     });
@@ -1289,7 +1278,6 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     screen.key(['q'], () => {
         // Only quit if not focused on input
         if (screen.focused !== input) {
-            stopMascotAnimation();
             onExit?.();
             return process.exit(0);
         }
@@ -1307,7 +1295,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
 
     // Cleanup on exit
     process.on('exit', () => {
-        stopMascotAnimation();
+        // Cleanup if needed
     });
 
     screen.render();

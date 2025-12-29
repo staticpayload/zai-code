@@ -1,3 +1,43 @@
+# v1.4.3 Release - Safety & UX Fixes
+
+## 🛡️ Safety Improvements
+
+### Auto Mode Protection
+- Added task validation - vague inputs like "hi" are now treated as questions, not file operations
+- Added file path filtering - blocks creating files in `src/` unless explicitly mentioned in task
+- Blocks file operations outside project directory
+- Better prompts to prevent model from creating random files
+
+### Casual Chat Detection
+- Improved greeting detection (hi, hii, hiii, hey, heyyy, yo, etc.)
+- Short inputs (≤4 chars) are now properly routed to chat handler
+- Auto mode no longer executes file operations for casual chat
+
+## 🎨 UI Improvements
+
+### Big ASCII Logo
+- New large "ZAI CODE" ASCII art banner
+- Toggle on/off in settings (ASCII Logo setting)
+
+### Settings Menu Fixed
+- Completely rewritten settings modal with proper keyboard handling
+- Added Default Mode setting - choose startup mode (edit/auto/ask/debug/review/explain)
+- Added ASCII Logo toggle
+- Up/Down/Enter/Escape all work properly now
+- Mouse support for clicking options
+
+### Command Palette Fixed
+- Up/Down arrow navigation now works correctly
+- Proper filtering of commands as you type
+- Tab completion works with selected item
+
+## ⚙️ New Settings
+
+- **Default Mode** - Set which mode zcode starts in (edit, auto, ask, debug, review, explain)
+- **ASCII Logo** - Toggle the big ASCII banner on/off
+
+---
+
 # v1.4.2 Release - Core Functionality Fixes
 
 ## 🐛 Critical Bug Fixes

@@ -84,6 +84,17 @@ export interface SessionState {
   currentStepIndex: number;
 }
 
+// Get default mode from settings (lazy load to avoid circular dependency)
+function getDefaultModeFromSettings(): SessionMode {
+  try {
+    // Dynamic import to avoid circular dependency
+    const { getDefaultMode } = require('./settings');
+    return getDefaultMode() as SessionMode;
+  } catch {
+    return 'edit';
+  }
+}
+
 // Create a new session state
 export function createSession(workingDirectory?: string): SessionState {
   return {
@@ -91,7 +102,7 @@ export function createSession(workingDirectory?: string): SessionState {
     lastPlan: null,
     lastDiff: null,
     pendingActions: null,
-    mode: 'edit',
+    mode: getDefaultModeFromSettings(),
     dryRun: false,
     workingDirectory: workingDirectory || process.cwd(),
     currentIntent: null,

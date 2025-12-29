@@ -15,6 +15,7 @@ export interface Settings {
     promptStyle: 'compact' | 'verbose';
   };
   execution: {
+    defaultMode: 'edit' | 'auto' | 'ask' | 'debug' | 'review' | 'explain';
     confirmationMode: 'strict' | 'normal';
     maxPlanIterations: number;
     allowShellExec: boolean;
@@ -53,6 +54,7 @@ const DEFAULT_SETTINGS: Settings = {
     promptStyle: 'compact',
   },
   execution: {
+    defaultMode: 'edit',
     confirmationMode: 'strict',
     maxPlanIterations: 5,
     allowShellExec: false,
@@ -170,6 +172,22 @@ export function shouldShowColor(): boolean {
 
 export function shouldShowLogo(): boolean {
   return loadSettings().ui.asciiLogo === 'on';
+}
+
+export function getDefaultMode(): 'edit' | 'auto' | 'ask' | 'debug' | 'review' | 'explain' {
+  return loadSettings().execution.defaultMode || 'edit';
+}
+
+export function setDefaultMode(mode: 'edit' | 'auto' | 'ask' | 'debug' | 'review' | 'explain'): void {
+  const settings = loadSettings();
+  settings.execution.defaultMode = mode;
+  saveSettings(settings);
+}
+
+export function setAsciiLogo(enabled: boolean): void {
+  const settings = loadSettings();
+  settings.ui.asciiLogo = enabled ? 'on' : 'off';
+  saveSettings(settings);
 }
 
 export function setNestedSetting(path: string, value: string): boolean {

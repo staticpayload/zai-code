@@ -8,6 +8,7 @@ export interface Settings {
         promptStyle: 'compact' | 'verbose';
     };
     execution: {
+        defaultMode: 'edit' | 'auto' | 'ask' | 'debug' | 'review' | 'explain';
         confirmationMode: 'strict' | 'normal';
         maxPlanIterations: number;
         allowShellExec: boolean;
@@ -40,6 +41,9 @@ export declare function markFirstRunComplete(): void;
 export declare function isFirstRun(): boolean;
 export declare function shouldShowColor(): boolean;
 export declare function shouldShowLogo(): boolean;
+export declare function getDefaultMode(): 'edit' | 'auto' | 'ask' | 'debug' | 'review' | 'explain';
+export declare function setDefaultMode(mode: 'edit' | 'auto' | 'ask' | 'debug' | 'review' | 'explain'): void;
+export declare function setAsciiLogo(enabled: boolean): void;
 export declare function setNestedSetting(path: string, value: string): boolean;
 export declare function loadProjectSettings(projectPath?: string): Partial<Settings> | null;
 export declare function getEffectiveSettings(projectPath?: string): Settings;

@@ -98,14 +98,27 @@ export interface OrchestrationResult {
 // Check if input is casual chat (greetings, small talk)
 function isCasualChat(input: string): boolean {
   const lower = input.toLowerCase().trim();
+  
+  // Very short inputs (1-4 chars) that look like greetings
+  if (lower.length <= 4) {
+    const shortGreetings = ['hi', 'hii', 'hey', 'yo', 'sup', 'ok', 'yes', 'no', 'yep', 'nah', 'bye', 'thx', 'ty'];
+    if (shortGreetings.some(g => lower.startsWith(g))) {
+      return true;
+    }
+  }
+  
   const casualPatterns = [
-    /^(hi|hello|hey|yo|sup|hola|howdy|greetings)[\s!.,]*$/i,
+    /^h+i+!*$/i,  // hi, hii, hiii, etc
+    /^he+y+!*$/i, // hey, heyy, heyyy
+    /^y+o+!*$/i,  // yo, yoo, yooo
+    /^(hello|hola|howdy|greetings)[\s!.,]*$/i,
     /^(good\s*(morning|afternoon|evening|night))[\s!.,]*$/i,
     /^(what'?s?\s*up|how\s*are\s*you|how'?s?\s*it\s*going)[\s!?.,]*$/i,
     /^(thanks|thank\s*you|thx|ty)[\s!.,]*$/i,
     /^(bye|goodbye|see\s*ya|later|cya)[\s!.,]*$/i,
     /^(ok|okay|sure|yes|no|yep|nope|yeah|nah)[\s!.,]*$/i,
-    /^(cool|nice|great|awesome|perfect)[\s!.,]*$/i,
+    /^(cool|nice|great|awesome|perfect|lol|lmao)[\s!.,]*$/i,
+    /^(sup|wassup|wazzup)[\s!.,]*$/i,
   ];
   
   return casualPatterns.some(pattern => pattern.test(lower));
@@ -246,6 +259,17 @@ Respond directly and concisely.`;
 
 // Handle auto execution - plan, generate, and apply in one go
 async function handleAutoExecute(input: string): Promise<{ handled: boolean; message?: string }> {
+  // SAFETY: Check if this looks like a real coding task
+  // If input is too short or vague, don't execute file operations
+  const looksLikeTask = input.length > 10 && 
+    /(create|add|implement|build|make|write|update|modify|fix|change|delete|remove|refactor)/i.test(input);
+  
+  if (!looksLikeTask) {
+    // Treat as a question instead
+    console.log(dim('Input too vague for auto mode. Treating as question...'));
+    return handleAskQuestion(input);
+  }
+
   try {
     let apiKey: string;
     try {
@@ -283,6 +307,12 @@ Working directory: ${session.workingDirectory}
 
 ${filesContext ? `Relevant files:\n${filesContext}` : ''}
 
+IMPORTANT RULES:
+1. Only create/modify files that are DIRECTLY related to the user's task
+2. NEVER create files in src/ unless explicitly asked to modify source code
+3. For project files, use the .zai/ folder for any internal/temporary files
+4. If the task is unclear, respond with just an explanation - don't create files
+
 Execute this task completely. For file operations, respond with JSON:
 {
   "status": "success",
@@ -292,13 +322,13 @@ Execute this task completely. For file operations, respond with JSON:
   "output": "Brief explanation of what was done"
 }
 
-For questions or explanations, respond with:
+For questions or explanations (no file changes needed), respond with:
 {
-  "status": "success",
+  "status": "success", 
   "output": "Your response here"
 }
 
-Be decisive and thorough. Always use relative paths from the working directory.`;
+Be decisive but careful. Only modify files when the task clearly requires it.`;
 
     const result = await execute({ instruction }, apiKey);
 
@@ -313,43 +343,61 @@ Be decisive and thorough. Always use relative paths from the working directory.`
 
       // Check if there are file operations
       if (response && response.files && response.files.length > 0) {
-        console.log(success(`Applying ${response.files.length} file(s)...`));
+        // SAFETY: Filter out suspicious file operations
+        const safeFiles = response.files.filter(file => {
+          const filePath = file.path.toLowerCase();
+          // Block creating files in src/ unless task explicitly mentions it
+          if (filePath.startsWith('src/') && !input.toLowerCase().includes('src')) {
+            console.log(dim(`  Skipped ${file.path} (not in task scope)`));
+            return false;
+          }
+          // Block creating files outside project
+          if (filePath.startsWith('/') || filePath.startsWith('..')) {
+            console.log(dim(`  Skipped ${file.path} (outside project)`));
+            return false;
+          }
+          return true;
+        });
 
-        let applied = 0;
-        let failed = 0;
-        
-        for (const file of response.files) {
-          try {
-            // Normalize the path
-            let filePath = file.path;
-            if (filePath.startsWith('./')) {
-              filePath = filePath.substring(2);
-            }
-            
-            const opResult = applyFileOperation(file.operation, filePath, file.content, {
-              basePath: session.workingDirectory
-            });
-            if (opResult.success) {
-              console.log(success(`  ${file.operation}: ${filePath}`));
-              applied++;
-            } else {
-              console.log(error(`  Failed ${filePath}: ${opResult.error}`));
+        if (safeFiles.length > 0) {
+          console.log(success(`Applying ${safeFiles.length} file(s)...`));
+
+          let applied = 0;
+          let failed = 0;
+          
+          for (const file of safeFiles) {
+            try {
+              // Normalize the path
+              let filePath = file.path;
+              if (filePath.startsWith('./')) {
+                filePath = filePath.substring(2);
+              }
+              
+              const opResult = applyFileOperation(file.operation, filePath, file.content, {
+                basePath: session.workingDirectory
+              });
+              if (opResult.success) {
+                console.log(success(`  ${file.operation}: ${filePath}`));
+                applied++;
+              } else {
+                console.log(error(`  Failed ${filePath}: ${opResult.error}`));
+                failed++;
+              }
+            } catch (e: any) {
+              console.log(error(`  Failed ${file.path}: ${e?.message}`));
               failed++;
             }
-          } catch (e: any) {
-            console.log(error(`  Failed ${file.path}: ${e?.message}`));
-            failed++;
           }
+          
+          console.log('');
+          if (applied > 0) {
+            console.log(success(`Applied ${applied} file(s)`));
+          }
+          if (failed > 0) {
+            console.log(error(`Failed ${failed} file(s)`));
+          }
+          console.log(hint('/undo to rollback'));
         }
-        
-        console.log('');
-        if (applied > 0) {
-          console.log(success(`Applied ${applied} file(s)`));
-        }
-        if (failed > 0) {
-          console.log(error(`Failed ${failed} file(s)`));
-        }
-        console.log(hint('/undo to rollback'));
       }
 
       // Show output/explanation

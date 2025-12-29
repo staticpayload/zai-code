@@ -1,13 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { IntentType } from '../session';
 
-// Context size limits
-const MAX_CONTEXT_TOKENS = 50000;  // Approximate max tokens
-const MAX_FILE_SIZE = 50000;       // Max bytes per file
-const MAX_FILES = 50;              // Max files to include
-const CHARS_PER_TOKEN = 4;         // Approximate chars per token
-
-// File relevance score factors
 export interface FileScore {
   path: string;
   score: number;
@@ -15,19 +9,13 @@ export interface FileScore {
   extension: string;
 }
 
-// Context result
 export interface ContextResult {
-  files: Array<{
-    path: string;
-    content: string;
-    truncated: boolean;
-  }>;
+  files: FileScore[];
   totalTokens: number;
-  fileCount: number;
-  truncatedCount: number;
+  truncated: boolean;
 }
 
-// File extensions by priority
+// File extensions priority for code context
 const EXTENSION_PRIORITY: Record<string, number> = {
   '.ts': 10,
   '.tsx': 10,
@@ -55,7 +43,7 @@ const EXTENSION_PRIORITY: Record<string, number> = {
   '.bash': 5,
 };
 
-// Directories to always skip
+// Directories to skip
 const SKIP_DIRS = new Set([
   'node_modules',
   '.git',
@@ -64,281 +52,180 @@ const SKIP_DIRS = new Set([
   'dist',
   'build',
   'out',
-  'target',
-  '__pycache__',
-  '.cache',
   '.next',
   '.nuxt',
-  'vendor',
+  '__pycache__',
+  '.pytest_cache',
   'coverage',
   '.nyc_output',
+  'vendor',
+  '.zai',
 ]);
 
-// Files to always skip
+// Files to skip
 const SKIP_FILES = new Set([
   'package-lock.json',
   'yarn.lock',
   'pnpm-lock.yaml',
-  'composer.lock',
-  'Gemfile.lock',
-  'Cargo.lock',
-  'go.sum',
+  '.DS_Store',
+  'Thumbs.db',
 ]);
 
-// Index workspace and return file list with metadata
-export function indexWorkspace(rootPath: string): FileScore[] {
+// Estimate tokens from content (rough: 1 token ≈ 4 chars)
+function estimateTokens(content: string): number {
+  return Math.ceil(content.length / 4);
+}
+
+// Index workspace files
+export function indexWorkspace(workingDir: string, maxDepth: number = 5): FileScore[] {
   const files: FileScore[] = [];
 
-  // Validate root path exists
-  if (!fs.existsSync(rootPath)) {
-    return files;
-  }
+  function walk(dir: string, depth: number) {
+    if (depth > maxDepth) return;
 
-  function walk(dir: string, depth: number = 0): void {
-    if (depth > 10) return; // Max depth
-
+    let entries: fs.Dirent[];
     try {
-      const entries = fs.readdirSync(dir, { withFileTypes: true });
-
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name);
-        const relativePath = path.relative(rootPath, fullPath);
-
-        if (entry.isDirectory()) {
-          if (!SKIP_DIRS.has(entry.name) && !entry.name.startsWith('.')) {
-            walk(fullPath, depth + 1);
-          }
-        } else if (entry.isFile()) {
-          if (SKIP_FILES.has(entry.name)) continue;
-
-          try {
-            const stats = fs.statSync(fullPath);
-            const ext = path.extname(entry.name).toLowerCase();
-
-            // Skip binary and very large files
-            if (stats.size > MAX_FILE_SIZE * 2) continue;
-
-            const priority = EXTENSION_PRIORITY[ext] || 1;
-
-            // Score based on extension priority and inverse of depth
-            const score = priority * (10 - Math.min(depth, 9));
-
-            files.push({
-              path: relativePath,
-              score,
-              size: stats.size,
-              extension: ext,
-            });
-          } catch {
-            // Skip files we can't stat
-          }
-        }
-      }
+      entries = fs.readdirSync(dir, { withFileTypes: true });
     } catch {
-      // Skip directories we can't read
+      return;
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      const relativePath = path.relative(workingDir, fullPath);
+
+      if (entry.isDirectory()) {
+        if (!SKIP_DIRS.has(entry.name) && !entry.name.startsWith('.')) {
+          walk(fullPath, depth + 1);
+        }
+      } else if (entry.isFile()) {
+        if (SKIP_FILES.has(entry.name)) continue;
+        if (entry.name.startsWith('.')) continue;
+
+        const ext = path.extname(entry.name).toLowerCase();
+        const priority = EXTENSION_PRIORITY[ext] || 1;
+
+        let size = 0;
+        try {
+          const stat = fs.statSync(fullPath);
+          size = stat.size;
+        } catch {
+          continue;
+        }
+
+        // Skip very large files (> 100KB)
+        if (size > 100000) continue;
+
+        files.push({
+          path: relativePath,
+          score: priority,
+          size,
+          extension: ext,
+        });
+      }
     }
   }
 
-  walk(rootPath);
+  walk(workingDir, 0);
   return files;
 }
 
-// Score file relevance to a task
-export function scoreFileRelevance(
-  file: FileScore,
-  intent: string,
-  intentType: string
-): number {
+// Score files based on relevance to intent
+function scoreFileRelevance(file: FileScore, intent: string, intentType: IntentType): number {
   let score = file.score;
-  const intentLower = intent.toLowerCase();
-  const pathLower = file.path.toLowerCase();
+  const lowerPath = file.path.toLowerCase();
+  const lowerIntent = intent.toLowerCase();
 
-  // Boost if path contains words from intent
-  const intentWords = intentLower.split(/\s+/).filter(w => w.length > 3);
-  for (const word of intentWords) {
-    if (pathLower.includes(word)) {
+  // Boost files mentioned in intent
+  const words = lowerIntent.split(/\s+/);
+  for (const word of words) {
+    if (word.length > 2 && lowerPath.includes(word)) {
       score += 5;
     }
   }
 
   // Boost based on intent type
-  switch (intentType) {
-    case 'DEBUG':
-      // Prefer test files and error-related files
-      if (pathLower.includes('test') || pathLower.includes('spec')) {
-        score += 3;
-      }
-      if (pathLower.includes('error') || pathLower.includes('exception')) {
-        score += 3;
-      }
-      break;
-    case 'REFACTOR':
-      // Prefer main source files
-      if (pathLower.includes('src/') || pathLower.includes('lib/')) {
-        score += 3;
-      }
-      break;
-    case 'REVIEW':
-      // Prefer config and doc files
-      if (file.extension === '.md' || file.extension === '.json') {
-        score += 2;
-      }
-      break;
+  if (intentType === 'DEBUG' && (lowerPath.includes('test') || lowerPath.includes('spec'))) {
+    score += 3;
+  }
+  if (intentType === 'REVIEW' && lowerPath.includes('readme')) {
+    score += 2;
   }
 
-  // Penalize very large files
-  if (file.size > 10000) {
-    score -= 2;
-  }
-  if (file.size > 30000) {
-    score -= 3;
+  // Boost entry points
+  if (lowerPath === 'index.ts' || lowerPath === 'index.js' || lowerPath === 'main.ts') {
+    score += 2;
   }
 
   return score;
 }
 
-// Summarize a large file to fit in context
-export function summarizeFile(content: string, maxChars: number): { summary: string; truncated: boolean } {
-  if (maxChars <= 0) {
-    return { summary: '', truncated: true };
-  }
-  
-  if (content.length <= maxChars) {
-    return { summary: content, truncated: false };
-  }
-
-  // Include first portion and last portion
-  const headSize = Math.floor(maxChars * 0.7);
-  const tailSize = Math.floor(maxChars * 0.2);
-  const truncationMessage = `\n\n... [${content.length - headSize - tailSize} chars truncated] ...\n\n`;
-
-  // Ensure we have room for the truncation message
-  const effectiveMaxChars = maxChars - truncationMessage.length;
-  if (effectiveMaxChars <= 0) {
-    return { summary: content.slice(0, maxChars), truncated: true };
-  }
-
-  const effectiveHeadSize = Math.floor(effectiveMaxChars * 0.7);
-  const effectiveTailSize = Math.floor(effectiveMaxChars * 0.2);
-
-  const head = content.slice(0, effectiveHeadSize);
-  const tail = content.slice(-effectiveTailSize);
-
-  const summary = `${head}${truncationMessage}${tail}`;
-
-  return { summary, truncated: true };
-}
-
-// Build context for a task
+// Build context for API call
 export function buildContext(
-  rootPath: string,
+  workingDir: string,
   intent: string,
-  intentType: string,
-  additionalFiles: string[] = []
+  intentType: IntentType,
+  openFiles: string[] = [],
+  maxTokens: number = 50000
 ): ContextResult {
-  // Index workspace
-  const allFiles = indexWorkspace(rootPath);
+  const allFiles = indexWorkspace(workingDir);
 
-  // Score files by relevance
+  // Score and sort files
   const scoredFiles = allFiles.map(f => ({
     ...f,
-    relevanceScore: scoreFileRelevance(f, intent, intentType),
+    score: scoreFileRelevance(f, intent, intentType),
   }));
 
-  // Sort by relevance score descending
-  scoredFiles.sort((a, b) => b.relevanceScore - a.relevanceScore);
+  // Prioritize open files
+  for (const openFile of openFiles) {
+    const relative = path.relative(workingDir, openFile);
+    const found = scoredFiles.find(f => f.path === relative);
+    if (found) {
+      found.score += 20;
+    }
+  }
 
-  // Add additional files with high priority
-  const additionalSet = new Set(additionalFiles.map(f => path.relative(rootPath, f)));
+  // Sort by score descending
+  scoredFiles.sort((a, b) => b.score - a.score);
 
   // Select files within token budget
-  const result: ContextResult = {
-    files: [],
-    totalTokens: 0,
-    fileCount: 0,
-    truncatedCount: 0,
-  };
+  const selectedFiles: FileScore[] = [];
+  let totalTokens = 0;
+  let truncated = false;
 
-  const maxChars = MAX_CONTEXT_TOKENS * CHARS_PER_TOKEN;
-  let currentChars = 0;
-
-  // First, add explicitly requested files
-  for (const relPath of additionalSet) {
-    const fullPath = path.join(rootPath, relPath);
-    try {
-      const content = fs.readFileSync(fullPath, 'utf-8');
-      const { summary, truncated } = summarizeFile(content, Math.min(content.length, MAX_FILE_SIZE));
-
-      if (currentChars + summary.length > maxChars) break;
-
-      result.files.push({
-        path: relPath,
-        content: summary,
-        truncated,
-      });
-      currentChars += summary.length;
-      result.fileCount++;
-      if (truncated) result.truncatedCount++;
-    } catch {
-      // Skip files we can't read
-    }
-  }
-
-  // Then add scored files
   for (const file of scoredFiles) {
-    if (result.fileCount >= MAX_FILES) break;
-    if (currentChars >= maxChars) break;
-    if (additionalSet.has(file.path)) continue;
-
-    const fullPath = path.join(rootPath, file.path);
-    try {
-      const content = fs.readFileSync(fullPath, 'utf-8');
-      const maxFileChars = Math.min(
-        MAX_FILE_SIZE,
-        Math.floor((maxChars - currentChars) / 2) // Leave room for other files
-      );
-      const { summary, truncated } = summarizeFile(content, maxFileChars);
-
-      if (currentChars + summary.length > maxChars) break;
-
-      result.files.push({
-        path: file.path,
-        content: summary,
-        truncated,
-      });
-      currentChars += summary.length;
-      result.fileCount++;
-      if (truncated) result.truncatedCount++;
-    } catch {
-      // Skip files we can't read
+    const estimatedTokens = Math.ceil(file.size / 4);
+    if (totalTokens + estimatedTokens > maxTokens) {
+      truncated = true;
+      continue;
     }
+    selectedFiles.push(file);
+    totalTokens += estimatedTokens;
   }
 
-  result.totalTokens = Math.ceil(currentChars / CHARS_PER_TOKEN);
-
-  return result;
+  return {
+    files: selectedFiles,
+    totalTokens,
+    truncated,
+  };
 }
 
-// Format context for model input
+// Format context for model
 export function formatContextForModel(context: ContextResult): string {
   if (context.files.length === 0) {
-    return 'No files in context.';
+    return '';
   }
 
-  let output = `Context: ${context.fileCount} files (~${context.totalTokens} tokens)`;
-  if (context.truncatedCount > 0) {
-    output += ` [${context.truncatedCount} truncated]`;
-  }
-  output += '\n\n';
+  const parts: string[] = [];
 
-  for (const file of context.files) {
-    output += `--- ${file.path}${file.truncated ? ' [truncated]' : ''} ---\n`;
-    output += file.content;
-    output += '\n\n';
+  for (const file of context.files.slice(0, 20)) {
+    try {
+      const content = fs.readFileSync(file.path, 'utf-8');
+      parts.push(`--- ${file.path} ---\n${content}\n`);
+    } catch {
+      // Skip unreadable files
+    }
   }
 
-  return output;
+  return parts.join('\n');
 }
-
-// Export limits for external use
-export { MAX_CONTEXT_TOKENS, MAX_FILE_SIZE, MAX_FILES };

@@ -33,120 +33,77 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.BASE_SYSTEM_PROMPT = exports.MEMORY_FILE = void 0;
 exports.loadProjectContext = loadProjectContext;
 exports.saveProjectContext = saveProjectContext;
-exports.appendProjectRule = appendProjectRule;
 exports.getSystemPrompt = getSystemPrompt;
-exports.createProjectMemory = createProjectMemory;
+exports.hasProjectContext = hasProjectContext;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
-const os = __importStar(require("os"));
-// Memory file location (relative to working directory)
-const MEMORY_FILE = '.zai/context.md';
-exports.MEMORY_FILE = MEMORY_FILE;
-// Base system prompt (deterministic execution engine)
-const BASE_SYSTEM_PROMPT = `You are an execution engine. Follow these rules exactly:
+const CONTEXT_FILE = '.zai/context.md';
+// Default system prompt
+const DEFAULT_SYSTEM_PROMPT = `You are an expert AI coding assistant. You help developers write, debug, and improve code.
 
-RULES:
-- Output ONLY what is explicitly requested
-- No explanations unless requested
-- No apologies or acknowledgments
-- No conversational language
-- No first-person references
-- No preamble or postamble
-- No markdown formatting unless requested
-- Raw output only
+Guidelines:
+- Write clean, maintainable, well-documented code
+- Follow best practices for the language/framework being used
+- Provide clear explanations when asked
+- Be concise but thorough
+- If unsure, say so rather than guessing
 
-BEHAVIOR:
-- Execute instructions literally
-- Be deterministic and consistent
-- If a schema is provided, output valid JSON matching that schema exactly
-- If output format is specified, follow it precisely
-
-VIOLATIONS:
-- Do not say "I", "I'll", "I can", "Sure", "Certainly", "Of course"
-- Do not say "Here is", "Here's", "Let me"
-- Do not apologize or explain limitations
-- Do not add commentary or suggestions unless requested`;
-exports.BASE_SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
-// Get the full path to memory file
-function getMemoryPath(workingDir) {
-    const baseDir = workingDir || process.cwd();
-    return path.join(baseDir, MEMORY_FILE);
-}
-// Ensure .zai directory exists
-function ensureMemoryDir(workingDir) {
-    const baseDir = workingDir || process.cwd();
-    const zaiDir = path.join(baseDir, '.zai');
-    try {
-        if (!fs.existsSync(zaiDir)) {
-            fs.mkdirSync(zaiDir, { recursive: true });
-        }
-        return true;
+When providing code changes, use this JSON format:
+{
+  "status": "success",
+  "files": [
+    {
+      "path": "relative/path/to/file",
+      "operation": "create" | "modify" | "delete",
+      "content": "full file content for create/modify"
     }
-    catch {
-        return false;
-    }
-}
-// Load project context from .zai/context.md
+  ],
+  "output": "Brief explanation of changes"
+}`;
+// Load project-specific context/rules
 function loadProjectContext(workingDir) {
+    const contextPath = path.join(workingDir, CONTEXT_FILE);
     try {
-        const memoryPath = getMemoryPath(workingDir);
-        if (fs.existsSync(memoryPath)) {
-            return fs.readFileSync(memoryPath, 'utf-8');
+        if (fs.existsSync(contextPath)) {
+            return fs.readFileSync(contextPath, 'utf-8');
         }
-        return '';
     }
     catch {
-        // Fail gracefully on permission errors
-        return '';
+        // Ignore errors
     }
+    return null;
 }
-// Save project context to .zai/context.md
-function saveProjectContext(content, workingDir) {
+// Save project context
+function saveProjectContext(workingDir, content) {
+    const contextPath = path.join(workingDir, CONTEXT_FILE);
+    const dir = path.dirname(contextPath);
     try {
-        if (!ensureMemoryDir(workingDir)) {
-            return false;
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
         }
-        const memoryPath = getMemoryPath(workingDir);
-        fs.writeFileSync(memoryPath, content, 'utf-8');
+        fs.writeFileSync(contextPath, content, 'utf-8');
         return true;
     }
     catch {
-        // Fail gracefully on permission errors
         return false;
     }
 }
-// Append a rule to project context
-function appendProjectRule(rule, workingDir) {
-    const existing = loadProjectContext(workingDir);
-    const newContent = existing ? `${existing}\n${rule}` : rule;
-    return saveProjectContext(newContent, workingDir);
-}
-// Get the complete system prompt with project rules
+// Get full system prompt with project context
 function getSystemPrompt(workingDir) {
-    const projectContext = loadProjectContext(workingDir);
-    const osInfo = `OS: ${process.platform} (${os.arch()})`;
-    let systemPrompt = BASE_SYSTEM_PROMPT;
-    systemPrompt += `\n\n${osInfo}`;
-    if (projectContext.trim()) {
-        systemPrompt += `\n\n<project_rules>\n${projectContext}\n</project_rules>`;
+    let prompt = DEFAULT_SYSTEM_PROMPT;
+    if (workingDir) {
+        const projectContext = loadProjectContext(workingDir);
+        if (projectContext) {
+            prompt += `\n\n--- Project Rules ---\n${projectContext}`;
+        }
     }
-    return systemPrompt;
+    return prompt;
 }
-// Create a ProjectMemory instance for a working directory
-function createProjectMemory(workingDir) {
-    return {
-        async load() {
-            return loadProjectContext(workingDir);
-        },
-        async append(rule) {
-            appendProjectRule(rule, workingDir);
-        },
-        async getSystemPrompt() {
-            return getSystemPrompt(workingDir);
-        },
-    };
+// Check if project has context file
+function hasProjectContext(workingDir) {
+    const contextPath = path.join(workingDir, CONTEXT_FILE);
+    return fs.existsSync(contextPath);
 }
 //# sourceMappingURL=project_memory.js.map
