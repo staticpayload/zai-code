@@ -56,7 +56,7 @@ const COMMANDS = [
     { name: 'reset', description: 'Reset session' },
     { name: 'exit', description: 'Exit zcode' },
 ];
-// ASCII Logo - ZAI CODE in matching block style, blue-themed
+// ASCII Logo
 const ASCII_LOGO = `
 {bold}{blue-fg}███████╗{/blue-fg}{cyan-fg} █████╗ {/cyan-fg}{blue-fg}██╗{/blue-fg}    {cyan-fg} ██████╗ ██████╗ ██████╗ ███████╗{/cyan-fg}{/bold}
 {bold}{blue-fg}╚══███╔╝{/blue-fg}{cyan-fg}██╔══██╗{/cyan-fg}{blue-fg}██║{/blue-fg}    {cyan-fg}██╔════╝██╔═══██╗██╔══██╗██╔════╝{/cyan-fg}{/bold}
@@ -69,12 +69,22 @@ const MINIMAL_LOGO = '{bold}{blue-fg}zai{/blue-fg} {cyan-fg}code{/cyan-fg}{/bold
 async function startTUI(options) {
     const { projectName, restored, onExit } = options;
     const session = (0, session_1.getSession)();
-    // Create screen
+    // Create screen with explicit color support
     const screen = blessed.screen({
         smartCSR: true,
         title: 'zai·code',
         fullUnicode: true,
+        dockBorders: true,
+        autoPadding: true,
     });
+    // Theme colors
+    const theme = {
+        bg: 'black',
+        fg: 'white',
+        border: 'blue',
+        highlight: 'cyan',
+        gray: 'gray'
+    };
     // Header with logo
     const header = blessed.box({
         top: 0,
@@ -84,8 +94,8 @@ async function startTUI(options) {
         tags: true,
         content: (0, settings_1.shouldShowLogo)() ? ASCII_LOGO : MINIMAL_LOGO,
         style: {
-            fg: 'white',
-            bg: 'default',
+            fg: theme.fg,
+            bg: theme.bg,
         },
     });
     // Tips section
@@ -100,8 +110,8 @@ async function startTUI(options) {
 2. Use {bold}/commands{/bold} for direct actions.
 3. {bold}/help{/bold} for more information.`,
         style: {
-            fg: 'white',
-            bg: 'default',
+            fg: theme.fg,
+            bg: theme.bg,
         },
         padding: { left: 1 },
     });
@@ -118,9 +128,10 @@ async function startTUI(options) {
         },
         style: {
             fg: 'yellow',
-            bg: 'default',
+            bg: theme.bg,
             border: {
                 fg: 'yellow',
+                bg: theme.bg
             },
         },
         padding: { left: 1 },
@@ -146,8 +157,8 @@ async function startTUI(options) {
         tags: true,
         content: `{bold}${projectName}{/bold}  ·  ${session.openFiles.length || 0} file(s) in context`,
         style: {
-            fg: 'white',
-            bg: 'default',
+            fg: theme.fg,
+            bg: theme.bg,
         },
         padding: { left: 1 },
     });
@@ -164,12 +175,13 @@ async function startTUI(options) {
         scrollbar: {
             ch: '│',
             style: {
-                fg: 'blue',
+                fg: theme.highlight,
+                bg: theme.bg
             },
         },
         style: {
-            fg: 'white',
-            bg: 'default',
+            fg: theme.fg,
+            bg: theme.bg,
         },
         padding: { left: 1, right: 1 },
     });
@@ -183,8 +195,10 @@ async function startTUI(options) {
             type: 'line',
         },
         style: {
+            bg: theme.bg,
             border: {
-                fg: 'blue',
+                fg: theme.border,
+                bg: theme.bg
             },
         },
     });
@@ -193,8 +207,11 @@ async function startTUI(options) {
         parent: inputContainer,
         left: 1,
         top: 0,
-        content: '{bold}{blue-fg}❯{/blue-fg}{/bold}',
+        content: `{bold}{blue-fg}❯{/blue-fg}{/bold}`,
         tags: true,
+        style: {
+            bg: theme.bg
+        }
     });
     // Input textbox
     const input = blessed.textbox({
@@ -205,8 +222,8 @@ async function startTUI(options) {
         height: 1,
         inputOnFocus: true,
         style: {
-            fg: 'white',
-            bg: 'default',
+            fg: theme.fg,
+            bg: theme.bg,
         },
     });
     // Placeholder text
@@ -215,9 +232,10 @@ async function startTUI(options) {
         left: 3,
         top: 0,
         tags: true,
-        content: '{gray-fg}Type your message or @path/to/file{/gray-fg}',
+        content: `{gray-fg}Type your message or /command{/gray-fg}`,
         style: {
-            fg: 'gray',
+            fg: theme.gray,
+            bg: theme.bg
         },
     });
     // Status bar at bottom
@@ -228,8 +246,8 @@ async function startTUI(options) {
         height: 1,
         tags: true,
         style: {
-            fg: 'white',
-            bg: 'default',
+            fg: theme.fg,
+            bg: theme.bg,
         },
         padding: { left: 1, right: 1 },
     });
@@ -256,19 +274,18 @@ async function startTUI(options) {
             type: 'line',
         },
         style: {
-            fg: 'white',
-            bg: 'default',
+            fg: theme.fg,
+            bg: theme.bg,
             border: {
-                fg: 'blue',
+                fg: theme.border,
+                bg: theme.bg
             },
             selected: {
-                bg: 'blue',
-                fg: 'white',
+                bg: theme.border,
+                fg: theme.fg,
                 bold: true,
             },
         },
-        keys: true,
-        vi: true,
         hidden: true,
     });
     // Add all elements to screen
@@ -280,30 +297,41 @@ async function startTUI(options) {
     screen.append(inputContainer);
     screen.append(statusBar);
     screen.append(palette);
-    // State
+    // Initial render
+    updateStatusBar();
+    input.focus();
+    screen.render();
+    // Restored message
+    if (restored) {
+        output.log('{gray-fg}Session restored.{/gray-fg}');
+    }
+    // agents.md notice
+    if ((0, agents_1.hasAgentsConfig)(session.workingDirectory)) {
+        output.log('{green-fg}agents.md detected and applied{/green-fg}');
+    }
+    // --- LOGIC ---
     let showPalette = false;
-    let paletteFilter = '';
-    // Update palette content
     function updatePalette(filter) {
         const query = filter.replace(/^\//, '').toLowerCase();
         const filtered = COMMANDS.filter(c => c.name.startsWith(query));
         palette.setItems(filtered.map(c => `{bold}/${c.name}{/bold}  {gray-fg}${c.description}{/gray-fg}`));
-        palette.select(0);
+        // Reset selection to top on new filter
+        if (filtered.length > 0) {
+            palette.select(0);
+        }
     }
-    // Show/hide palette
     function togglePalette(show, filter = '/') {
         showPalette = show;
-        paletteFilter = filter;
         if (show) {
             updatePalette(filter);
             palette.show();
-            palette.focus();
+            // CRITICAL: Do NOT focus palette. Keep input focused.
+            screen.render();
         }
         else {
             palette.hide();
-            input.focus();
+            screen.render();
         }
-        screen.render();
     }
     // Process input
     async function processInput(value) {
@@ -311,9 +339,14 @@ async function startTUI(options) {
             return;
         placeholder.hide();
         output.log(`{gray-fg}> ${value}{/gray-fg}`);
-        if (value === '/exit' || value === 'exit' || value === 'quit') {
+        const trimmed = value.trim();
+        if (trimmed === '/exit' || trimmed === 'exit' || trimmed === 'quit') {
             onExit?.();
             return process.exit(0);
+        }
+        if (trimmed === '/settings') {
+            showSettingsMenu();
+            return;
         }
         // Capture console.log
         const originalLog = console.log;
@@ -341,64 +374,164 @@ async function startTUI(options) {
         }
         screen.render();
     });
+    // Manual keypress handling for Palette interaction
+    input.on('keypress', (ch, key) => {
+        if (!key)
+            return;
+        if (key.name === 'escape') {
+            if (showPalette) {
+                togglePalette(false);
+            }
+            return;
+        }
+        if (key.name === 'down') {
+            if (showPalette) {
+                palette.down(1);
+                screen.render();
+                return;
+            }
+        }
+        if (key.name === 'up') {
+            if (showPalette) {
+                palette.up(1);
+                screen.render();
+                return;
+            }
+        }
+        // Check input content on next tick to see if we should show palette
+        setTimeout(() => {
+            const val = input.getValue();
+            if (val.startsWith('/')) {
+                togglePalette(true, val);
+            }
+            else {
+                if (showPalette)
+                    togglePalette(false);
+            }
+        }, 0);
+    });
+    // Submit handler
     input.on('submit', async (value) => {
+        if (showPalette) {
+            const selectedIndex = palette.selected;
+            const filter = input.getValue().replace(/^\//, '').toLowerCase();
+            // Logic duplication, but safe
+            const filteredCommands = COMMANDS.filter(c => c.name.startsWith(filter));
+            if (filteredCommands[selectedIndex]) {
+                // Autocomplete
+                const cmd = filteredCommands[selectedIndex];
+                input.setValue('/' + cmd.name + ' ');
+                togglePalette(false);
+                input.screen.render();
+                // Do not submit yet, let user type arguments
+                return;
+            }
+        }
         input.clearValue();
+        togglePalette(false);
         await processInput(value);
         input.focus();
     });
-    // CRITICAL: Intercept "/" at INPUT level - fires BEFORE text is added
-    input.on('keypress', (ch) => {
-        // If palette is already open, ignore
-        if (showPalette) {
-            return;
-        }
-        // "/" ALWAYS opens command palette (when input is empty or first char)
-        if (ch === '/' && (!input.getValue() || input.getValue() === '')) {
-            // Clear any "/" that might have been typed
-            input.clearValue();
-            togglePalette(true, '/');
-        }
-    });
-    // Palette events
-    palette.on('select', (item) => {
-        const text = item.getContent().replace(/{[^}]+}/g, '').trim();
-        const cmd = text.split(' ')[0];
-        input.setValue(cmd + ' ');
-        togglePalette(false);
-        input.focus();
+    // SETTINGS MODAL
+    function showSettingsMenu() {
+        const modal = blessed.box({
+            parent: screen,
+            top: 'center',
+            left: 'center',
+            width: '50%',
+            height: '60%',
+            border: { type: 'line' },
+            label: ' Settings (Esc to save & exit) ',
+            tags: true,
+            style: {
+                bg: 'black',
+                fg: 'white',
+                border: { fg: 'cyan' },
+                label: { fg: 'cyan', bold: true }
+            },
+            draggable: true
+        });
+        // Current settings
+        let currentSettings = (0, settings_1.loadSettings)();
+        const models = settings_1.AVAILABLE_MODELS;
+        // Flatten settings for list
+        const getListItems = () => [
+            `Model: ${currentSettings.model.current}`,
+            `Color: ${currentSettings.ui.color}`,
+            `Prompt: ${currentSettings.ui.promptStyle}`,
+            `Confirm: ${currentSettings.execution.confirmationMode}`,
+            `Shell Exec: ${currentSettings.execution.allowShellExec}`,
+            `Debug Log: ${currentSettings.debug.logging}`
+        ];
+        const list = blessed.list({
+            parent: modal,
+            top: 1,
+            left: 1,
+            right: 1,
+            bottom: 3,
+            keys: true,
+            vi: true,
+            style: {
+                selected: { bg: 'blue', fg: 'white', bold: true },
+                item: { fg: 'white', bg: 'black' }
+            },
+            items: getListItems()
+        });
+        const help = blessed.text({
+            parent: modal,
+            bottom: 1,
+            left: 1,
+            content: 'Enter: toggle/cycle  Esc: save',
+            style: { fg: 'gray', bg: 'black' }
+        });
+        list.focus();
         screen.render();
-    });
-    palette.key('escape', () => {
-        togglePalette(false);
-    });
-    palette.key(['up', 'down'], () => {
-        // Navigation handled by list widget
-    });
-    palette.key('enter', () => {
-        // Selection handled by 'select' event
-    });
-    // Global key bindings
-    screen.key(['escape'], () => {
-        if (showPalette) {
-            togglePalette(false);
-        }
-    });
+        list.on('select', (item, index) => {
+            // Basic cycling logic
+            if (index === 0) { // Model
+                const currIdx = models.indexOf(currentSettings.model.current);
+                const nextIdx = (currIdx + 1) % models.length;
+                currentSettings.model.current = models[nextIdx];
+            }
+            else if (index === 1) { // Color
+                const vals = ['auto', 'on', 'off'];
+                const currentVal = currentSettings.ui.color;
+                const n = (vals.indexOf(currentVal) + 1) % 3;
+                currentSettings.ui.color = vals[n];
+            }
+            else if (index === 2) { // Prompt
+                const v = currentSettings.ui.promptStyle === 'compact' ? 'verbose' : 'compact';
+                currentSettings.ui.promptStyle = v;
+            }
+            else if (index === 3) { // Confirm
+                const v = currentSettings.execution.confirmationMode === 'strict' ? 'normal' : 'strict';
+                currentSettings.execution.confirmationMode = v;
+            }
+            else if (index === 4) { // Shell
+                currentSettings.execution.allowShellExec = !currentSettings.execution.allowShellExec;
+            }
+            else if (index === 5) { // Debug
+                currentSettings.debug.logging = !currentSettings.debug.logging;
+            }
+            // Update all items
+            list.setItems(getListItems());
+            list.select(index); // Keep selection
+            screen.render();
+        });
+        list.key(['escape'], () => {
+            (0, settings_1.saveSettings)(currentSettings);
+            updateStatusBar();
+            modal.destroy();
+            input.focus();
+            screen.render();
+            output.log('{green-fg}Settings saved.{/green-fg}');
+        });
+    }
+    // Global Key Bindings
     screen.key(['C-c'], () => {
         onExit?.();
         return process.exit(0);
     });
-    // Initial render
-    updateStatusBar();
-    input.focus();
-    screen.render();
-    // Restored message
-    if (restored) {
-        output.log('{gray-fg}Session restored.{/gray-fg}');
-    }
-    // agents.md notice
-    if ((0, agents_1.hasAgentsConfig)(session.workingDirectory)) {
-        output.log('{green-fg}agents.md detected and applied{/green-fg}');
-    }
     screen.render();
 }
 //# sourceMappingURL=tui.js.map
