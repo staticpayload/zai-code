@@ -6,7 +6,7 @@ import { PLAN_SCHEMA } from './session';
 import { success, error } from './ui';
 import * as path from 'path';
 import { buildContext, formatContextForModel } from './context/context_builder';
-import { getAgentsContext } from './agents';
+import { buildSystemPrompt } from './mode_prompts';
 
 // Planner configuration
 const MAX_PLAN_ITERATIONS = 5;
@@ -74,35 +74,18 @@ export async function runPlannerLoop(): Promise<PlannerResult> {
   );
   const filesContext = formatContextForModel(context);
 
-  // Mode constraints
-  let modeConstraints = '';
-  switch (session.mode) {
-    case 'edit':
-      modeConstraints = 'Focus on implementing changes. May create, modify, or delete files.';
-      break;
-    case 'explain':
-      modeConstraints = 'Explain code and concepts. No file modifications.';
-      break;
-    case 'review':
-      modeConstraints = 'Analyze and review code. Identify issues and improvements.';
-      break;
-    case 'debug':
-      modeConstraints = 'Focus on finding and fixing bugs. Minimal targeted changes.';
-      break;
-  }
-
   // Bounded planning loop
   while (iterations < MAX_PLAN_ITERATIONS) {
     iterations++;
 
-    const agentsContext = getAgentsContext(session.workingDirectory);
+    const modeSystemPrompt = buildSystemPrompt(session.mode, session.workingDirectory);
 
-    const instruction = `Create a plan for the following task.
-${agentsContext}
+    const instruction = `${modeSystemPrompt}
+
+Create a plan for the following task.
+
 Task: ${intent}
 Intent Type: ${getIntentType() || 'COMMAND'}
-Mode: ${session.mode}
-Constraints: ${modeConstraints}
 
 Working directory: ${session.workingDirectory}
 
@@ -222,17 +205,18 @@ export async function runGenerateLoop(): Promise<GenerateResult> {
   while (iterations < MAX_REFINE_ITERATIONS) {
     iterations++;
 
-    const agentsContext = getAgentsContext(session.workingDirectory);
+    const modeSystemPrompt = buildSystemPrompt(session.mode, session.workingDirectory);
 
-    const instruction = `Execute the following plan and output file changes.
-${agentsContext}
+    const instruction = `${modeSystemPrompt}
+
+Execute the following plan and output file changes.
+
 Task: ${intent}
 
 Plan:
 ${planSummary}
 
 Working directory: ${session.workingDirectory}
-Mode: ${session.mode}
 
 ${filesContext ? `Files:\n${filesContext}` : ''}
 

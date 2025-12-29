@@ -42,7 +42,7 @@ const auth_1 = require("./auth");
 const session_2 = require("./session");
 const path = __importStar(require("path"));
 const context_builder_1 = require("./context/context_builder");
-const agents_1 = require("./agents");
+const mode_prompts_1 = require("./mode_prompts");
 // Planner configuration
 const MAX_PLAN_ITERATIONS = 5;
 exports.MAX_PLAN_ITERATIONS = MAX_PLAN_ITERATIONS;
@@ -83,32 +83,16 @@ async function runPlannerLoop() {
     // Build context from workspace
     const context = (0, context_builder_1.buildContext)(session.workingDirectory, intent, (0, session_1.getIntentType)() || 'COMMAND', session.openFiles.map(f => path.join(session.workingDirectory, f)));
     const filesContext = (0, context_builder_1.formatContextForModel)(context);
-    // Mode constraints
-    let modeConstraints = '';
-    switch (session.mode) {
-        case 'edit':
-            modeConstraints = 'Focus on implementing changes. May create, modify, or delete files.';
-            break;
-        case 'explain':
-            modeConstraints = 'Explain code and concepts. No file modifications.';
-            break;
-        case 'review':
-            modeConstraints = 'Analyze and review code. Identify issues and improvements.';
-            break;
-        case 'debug':
-            modeConstraints = 'Focus on finding and fixing bugs. Minimal targeted changes.';
-            break;
-    }
     // Bounded planning loop
     while (iterations < MAX_PLAN_ITERATIONS) {
         iterations++;
-        const agentsContext = (0, agents_1.getAgentsContext)(session.workingDirectory);
-        const instruction = `Create a plan for the following task.
-${agentsContext}
+        const modeSystemPrompt = (0, mode_prompts_1.buildSystemPrompt)(session.mode, session.workingDirectory);
+        const instruction = `${modeSystemPrompt}
+
+Create a plan for the following task.
+
 Task: ${intent}
 Intent Type: ${(0, session_1.getIntentType)() || 'COMMAND'}
-Mode: ${session.mode}
-Constraints: ${modeConstraints}
 
 Working directory: ${session.workingDirectory}
 
@@ -206,16 +190,17 @@ async function runGenerateLoop() {
     // Bounded generation loop
     while (iterations < MAX_REFINE_ITERATIONS) {
         iterations++;
-        const agentsContext = (0, agents_1.getAgentsContext)(session.workingDirectory);
-        const instruction = `Execute the following plan and output file changes.
-${agentsContext}
+        const modeSystemPrompt = (0, mode_prompts_1.buildSystemPrompt)(session.mode, session.workingDirectory);
+        const instruction = `${modeSystemPrompt}
+
+Execute the following plan and output file changes.
+
 Task: ${intent}
 
 Plan:
 ${planSummary}
 
 Working directory: ${session.workingDirectory}
-Mode: ${session.mode}
 
 ${filesContext ? `Files:\n${filesContext}` : ''}
 
