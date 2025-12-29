@@ -2,253 +2,348 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.startInteractive = startInteractive;
 const session_1 = require("./session");
-const ui_1 = require("./ui");
 const orchestrator_1 = require("./orchestrator");
-const commands_1 = require("./commands");
-// Command definitions with descriptions for autocomplete
-const COMMAND_DESCRIPTIONS = {
-    help: 'Show all commands',
-    plan: 'Generate execution plan',
-    generate: 'Create file changes',
-    diff: 'Review pending changes',
-    apply: 'Apply changes',
-    undo: 'Rollback last operation',
-    reset: 'Reset session state',
-    exit: 'Exit zcode',
-    mode: 'Set mode (edit/explain/review/debug)',
-    'dry-run': 'Toggle dry-run mode',
-    profile: 'Manage profiles',
-    settings: 'Open settings menu',
-    context: 'Show current context',
-    files: 'List open files',
-    open: 'Add file to context',
-    workspace: 'Show workspace info',
-    git: 'Show git status',
-    exec: 'Run shell command',
-    history: 'View task history',
-    doctor: 'System health check',
-    decompose: 'Break task into steps',
-    step: 'Plan current step',
-    next: 'Complete and advance',
-    skip: 'Skip current step',
-    progress: 'Show task progress',
-    'undo-history': 'View undo history',
+const git_1 = require("./git");
+const settings_1 = require("./settings");
+const profiles_1 = require("./profiles");
+// Command definitions with descriptions
+const COMMANDS = [
+    { name: 'help', description: 'Show all commands' },
+    { name: 'plan', description: 'Generate execution plan' },
+    { name: 'generate', description: 'Create file changes' },
+    { name: 'diff', description: 'Review pending changes' },
+    { name: 'apply', description: 'Apply changes' },
+    { name: 'undo', description: 'Rollback last operation' },
+    { name: 'reset', description: 'Reset session state' },
+    { name: 'exit', description: 'Exit zcode' },
+    { name: 'mode', description: 'Set mode' },
+    { name: 'dry-run', description: 'Toggle dry-run mode' },
+    { name: 'profile', description: 'Manage profiles' },
+    { name: 'settings', description: 'Open settings menu' },
+    { name: 'context', description: 'Show current context' },
+    { name: 'files', description: 'List open files' },
+    { name: 'open', description: 'Add file to context' },
+    { name: 'workspace', description: 'Show workspace info' },
+    { name: 'git', description: 'Show git status' },
+    { name: 'exec', description: 'Run shell command' },
+    { name: 'history', description: 'View task history' },
+    { name: 'doctor', description: 'System health check' },
+    { name: 'decompose', description: 'Break task into steps' },
+    { name: 'step', description: 'Plan current step' },
+    { name: 'next', description: 'Complete and advance' },
+    { name: 'skip', description: 'Skip current step' },
+    { name: 'progress', description: 'Show task progress' },
+];
+// ANSI escape codes
+const ESC = '\x1b';
+const CSI = `${ESC}[`;
+// Screen control
+const screen = {
+    clear: () => process.stdout.write(`${CSI}2J${CSI}H`),
+    clearLine: () => process.stdout.write(`${CSI}2K`),
+    moveTo: (row, col) => process.stdout.write(`${CSI}${row};${col}H`),
+    moveUp: (n) => process.stdout.write(`${CSI}${n}A`),
+    moveDown: (n) => process.stdout.write(`${CSI}${n}B`),
+    saveCursor: () => process.stdout.write(`${ESC}7`),
+    restoreCursor: () => process.stdout.write(`${ESC}8`),
+    showCursor: () => process.stdout.write(`${CSI}?25h`),
+    hideCursor: () => process.stdout.write(`${CSI}?25l`),
 };
-// Get filtered commands based on input
-function getFilteredCommands(input) {
-    const query = input.toLowerCase().replace(/^\//, '');
-    const commands = (0, commands_1.getAvailableCommands)();
-    return commands
-        .filter(cmd => cmd.startsWith(query))
-        .map(cmd => ({
-        name: cmd,
-        description: COMMAND_DESCRIPTIONS[cmd] || '',
-    }))
-        .slice(0, 8); // Max 8 suggestions
+// Colors
+const c = {
+    reset: `${CSI}0m`,
+    dim: `${CSI}2m`,
+    bold: `${CSI}1m`,
+    cyan: `${CSI}36m`,
+    green: `${CSI}32m`,
+    yellow: `${CSI}33m`,
+    red: `${CSI}31m`,
+    inverse: `${CSI}7m`,
+};
+// Get terminal dimensions
+function getTermSize() {
+    return {
+        rows: process.stdout.rows || 24,
+        cols: process.stdout.columns || 80,
+    };
 }
-// Render suggestions dropdown
-function renderSuggestions(suggestions, selectedIndex, promptLength) {
-    if (suggestions.length === 0)
-        return;
-    // Move cursor to new line and show suggestions
-    process.stdout.write('\n');
-    for (let i = 0; i < suggestions.length; i++) {
-        const cmd = suggestions[i];
-        const prefix = i === selectedIndex ? '>' : ' ';
-        const highlight = i === selectedIndex;
-        const line = ` ${prefix} /${cmd.name.padEnd(12)} ${(0, ui_1.dim)(cmd.description)}`;
-        if (highlight) {
-            process.stdout.write(`\x1b[7m${line}\x1b[0m\n`); // Inverted colors
+// Render header
+function renderHeader(projectName) {
+    const { cols } = getTermSize();
+    const session = (0, session_1.getSession)();
+    const gitInfo = (0, git_1.getGitInfo)(session.workingDirectory);
+    const model = (0, settings_1.getModel)().split('-').slice(1, 3).join('-');
+    const profile = (0, profiles_1.getActiveProfileName)() || 'custom';
+    const gitStatus = gitInfo.isRepo
+        ? `${gitInfo.branch || '?'}${gitInfo.isDirty ? '*' : ''}`
+        : 'no-git';
+    const left = `${c.bold}${c.cyan}zai${c.reset}${c.dim}·code${c.reset} ${c.dim}${projectName}${c.reset}`;
+    const right = `${c.dim}${gitStatus} · ${model} · ${profile}${c.reset}`;
+    // Strip ANSI for length calculation
+    const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
+    const leftLen = stripAnsi(left).length;
+    const rightLen = stripAnsi(right).length;
+    const padding = Math.max(0, cols - leftLen - rightLen - 2);
+    screen.moveTo(1, 1);
+    screen.clearLine();
+    process.stdout.write(`${left}${' '.repeat(padding)}${right}`);
+    // Separator line
+    screen.moveTo(2, 1);
+    screen.clearLine();
+    process.stdout.write(`${c.dim}${'─'.repeat(cols)}${c.reset}`);
+}
+// Render prompt
+function renderPrompt(input) {
+    const { rows, cols } = getTermSize();
+    const session = (0, session_1.getSession)();
+    // State
+    const state = session.pendingActions || session.lastDiff ? 'pending' :
+        session.lastPlan?.length ? 'planned' : 'ready';
+    // Build prompt
+    const prompt = `${c.cyan}${session.mode}${c.reset}${session.dryRun ? `${c.yellow}(dry)${c.reset}` : ''}${c.dim}:${c.reset}${state}${c.bold}>${c.reset} `;
+    const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
+    const promptLen = stripAnsi(prompt).length;
+    // Separator
+    screen.moveTo(rows - 1, 1);
+    screen.clearLine();
+    process.stdout.write(`${c.dim}${'─'.repeat(cols)}${c.reset}`);
+    // Prompt line
+    screen.moveTo(rows, 1);
+    screen.clearLine();
+    if (input) {
+        process.stdout.write(`${prompt}${input}`);
+    }
+    else {
+        process.stdout.write(`${prompt}${c.dim}Type / for commands...${c.reset}`);
+    }
+    // Position cursor
+    screen.moveTo(rows, promptLen + input.length + 1);
+}
+// Render command palette
+function renderPalette(filter, selectedIndex) {
+    const { rows, cols } = getTermSize();
+    const query = filter.replace(/^\//, '').toLowerCase();
+    const filtered = COMMANDS.filter(cmd => cmd.name.startsWith(query)).slice(0, 8);
+    if (filtered.length === 0)
+        return 0;
+    const paletteTop = rows - 2 - filtered.length;
+    for (let i = 0; i < filtered.length; i++) {
+        const cmd = filtered[i];
+        const row = paletteTop + i;
+        const isSelected = i === selectedIndex;
+        screen.moveTo(row, 1);
+        screen.clearLine();
+        if (isSelected) {
+            process.stdout.write(`${c.inverse} ▸ /${cmd.name.padEnd(14)} ${cmd.description.substring(0, cols - 20)} ${c.reset}`);
         }
         else {
-            process.stdout.write(`${line}\n`);
+            process.stdout.write(`   ${c.dim}/${cmd.name.padEnd(14)}${c.reset} ${c.dim}${cmd.description.substring(0, cols - 20)}${c.reset}`);
         }
     }
-    // Move cursor back up
-    process.stdout.write(`\x1b[${suggestions.length + 1}A`);
-    // Move to end of current input
-    process.stdout.write(`\x1b[${promptLength}G`);
+    // Hint line
+    screen.moveTo(rows - 2, 1);
+    screen.clearLine();
+    process.stdout.write(`${c.dim}↑↓ navigate · Enter select · Esc close${c.reset}`);
+    return filtered.length;
 }
-// Clear suggestions from screen
-function clearSuggestions(count) {
-    if (count === 0)
-        return;
-    // Save cursor position
-    process.stdout.write('\x1b[s');
-    // Move down and clear each line
-    for (let i = 0; i < count + 1; i++) {
-        process.stdout.write('\n\x1b[2K');
+// Clear palette
+function clearPalette(count) {
+    const { rows } = getTermSize();
+    const paletteTop = rows - 2 - count;
+    for (let i = 0; i <= count + 1; i++) {
+        screen.moveTo(paletteTop + i, 1);
+        screen.clearLine();
     }
-    // Restore cursor position
-    process.stdout.write('\x1b[u');
 }
-// Main interactive loop with autocomplete
+// Output buffer
+let outputLines = [];
+// Add output line
+function addOutput(line) {
+    outputLines.push(line);
+    renderOutput();
+}
+// Render output area
+function renderOutput() {
+    const { rows } = getTermSize();
+    const outputStart = 3;
+    const outputEnd = rows - 2;
+    const outputHeight = outputEnd - outputStart;
+    const visible = outputLines.slice(-outputHeight);
+    for (let i = 0; i < outputHeight; i++) {
+        screen.moveTo(outputStart + i, 1);
+        screen.clearLine();
+        if (visible[i]) {
+            process.stdout.write(visible[i]);
+        }
+    }
+}
+// Main interactive loop
 async function startInteractive(options) {
-    let currentInput = '';
-    let suggestions = [];
-    let selectedIndex = 0;
-    let showingSuggestions = false;
-    // Print initial hint
-    console.log((0, ui_1.dim)('Type / for commands, or enter a task'));
-    console.log('');
-    // Show prompt
-    const printPrompt = () => {
-        const session = (0, session_1.getSession)();
-        const prompt = (0, ui_1.getPrompt)(session);
-        process.stdout.write(prompt + currentInput);
-    };
-    // Enable raw mode for key-by-key input
+    const projectName = options?.projectName || 'project';
+    let input = '';
+    let showPalette = false;
+    let paletteIndex = 0;
+    let paletteCount = 0;
+    // Initial render
+    screen.clear();
+    renderHeader(projectName);
+    if (options?.restored) {
+        addOutput(`${c.dim}Session restored.${c.reset}`);
+    }
+    addOutput(`${c.dim}Type / for commands, or enter a task${c.reset}`);
+    renderOutput();
+    renderPrompt(input);
+    // Enable raw mode
     if (process.stdin.isTTY) {
         process.stdin.setRawMode(true);
     }
     process.stdin.resume();
     process.stdin.setEncoding('utf8');
-    printPrompt();
+    screen.showCursor();
     const handleKey = async (key) => {
-        const session = (0, session_1.getSession)();
-        const prompt = (0, ui_1.getPrompt)(session);
-        const promptLen = prompt.length + currentInput.length;
-        // Ctrl+C - exit
+        // Ctrl+C
         if (key === '\x03') {
+            screen.clear();
+            screen.moveTo(1, 1);
+            screen.showCursor();
             if (process.stdin.isTTY)
                 process.stdin.setRawMode(false);
-            process.stdout.write('\n');
             options?.onExit?.();
             return;
         }
-        // Escape - close suggestions or clear input
-        if (key === '\x1b' && showingSuggestions) {
-            clearSuggestions(suggestions.length);
-            showingSuggestions = false;
-            suggestions = [];
-            selectedIndex = 0;
+        // Escape
+        if (key === '\x1b' && showPalette) {
+            clearPalette(paletteCount);
+            showPalette = false;
+            paletteIndex = 0;
+            paletteCount = 0;
+            renderPrompt(input);
             return;
         }
-        // Up arrow - navigate suggestions
-        if (key === '\x1b[A' && showingSuggestions) {
-            selectedIndex = Math.max(0, selectedIndex - 1);
-            clearSuggestions(suggestions.length);
-            renderSuggestions(suggestions, selectedIndex, promptLen);
+        // Up arrow
+        if (key === '\x1b[A' && showPalette) {
+            paletteIndex = Math.max(0, paletteIndex - 1);
+            paletteCount = renderPalette(input, paletteIndex);
+            renderPrompt(input);
             return;
         }
-        // Down arrow - navigate suggestions
-        if (key === '\x1b[B' && showingSuggestions) {
-            selectedIndex = Math.min(suggestions.length - 1, selectedIndex + 1);
-            clearSuggestions(suggestions.length);
-            renderSuggestions(suggestions, selectedIndex, promptLen);
+        // Down arrow
+        if (key === '\x1b[B' && showPalette) {
+            paletteIndex = Math.min(paletteCount - 1, paletteIndex + 1);
+            paletteCount = renderPalette(input, paletteIndex);
+            renderPrompt(input);
             return;
         }
-        // Tab - autocomplete if showing suggestions
-        if (key === '\t' && showingSuggestions && suggestions.length > 0) {
-            clearSuggestions(suggestions.length);
-            currentInput = '/' + suggestions[selectedIndex].name + ' ';
-            showingSuggestions = false;
-            suggestions = [];
-            selectedIndex = 0;
-            // Reprint line
-            process.stdout.write('\r\x1b[2K');
-            printPrompt();
+        // Tab - autocomplete
+        if (key === '\t' && showPalette && paletteCount > 0) {
+            const query = input.replace(/^\//, '').toLowerCase();
+            const filtered = COMMANDS.filter(cmd => cmd.name.startsWith(query));
+            if (filtered[paletteIndex]) {
+                input = `/${filtered[paletteIndex].name} `;
+                clearPalette(paletteCount);
+                showPalette = false;
+                paletteIndex = 0;
+                paletteCount = 0;
+                renderPrompt(input);
+            }
             return;
         }
-        // Enter - submit or select suggestion
+        // Enter
         if (key === '\r' || key === '\n') {
-            if (showingSuggestions && suggestions.length > 0) {
-                // Select suggestion
-                clearSuggestions(suggestions.length);
-                currentInput = '/' + suggestions[selectedIndex].name;
-                showingSuggestions = false;
-                suggestions = [];
-                selectedIndex = 0;
-                // Reprint line
-                process.stdout.write('\r\x1b[2K');
-                printPrompt();
-                return;
+            // Select from palette
+            if (showPalette && paletteCount > 0) {
+                const query = input.replace(/^\//, '').toLowerCase();
+                const filtered = COMMANDS.filter(cmd => cmd.name.startsWith(query));
+                if (filtered[paletteIndex]) {
+                    input = `/${filtered[paletteIndex].name}`;
+                }
+                clearPalette(paletteCount);
+                showPalette = false;
+                paletteIndex = 0;
+                paletteCount = 0;
             }
-            // Submit input
-            clearSuggestions(suggestions.length);
-            process.stdout.write('\n');
-            const input = currentInput.trim();
-            currentInput = '';
-            showingSuggestions = false;
-            suggestions = [];
-            selectedIndex = 0;
-            // Handle exit
-            if (input === 'exit' || input === 'quit' || input === ':q' || input === '/exit') {
-                if (process.stdin.isTTY)
-                    process.stdin.setRawMode(false);
-                options?.onExit?.();
-                return;
-            }
-            // Process input
-            if (input) {
+            // Submit
+            const trimmed = input.trim();
+            input = '';
+            if (trimmed) {
+                addOutput(`${c.dim}> ${trimmed}${c.reset}`);
+                // Exit
+                if (trimmed === '/exit' || trimmed === 'exit' || trimmed === 'quit') {
+                    screen.clear();
+                    screen.moveTo(1, 1);
+                    screen.showCursor();
+                    if (process.stdin.isTTY)
+                        process.stdin.setRawMode(false);
+                    options?.onExit?.();
+                    return;
+                }
+                // Process command
+                const originalLog = console.log;
+                console.log = (...args) => {
+                    addOutput(args.map(a => String(a)).join(' '));
+                };
                 try {
-                    await (0, orchestrator_1.orchestrate)(input);
+                    await (0, orchestrator_1.orchestrate)(trimmed);
                 }
                 catch (e) {
-                    // Swallow errors
+                    addOutput(`${c.red}Error: ${e}${c.reset}`);
                 }
+                console.log = originalLog;
+                renderHeader(projectName);
+                renderOutput();
             }
-            // Show prompt again
-            console.log('');
-            printPrompt();
+            renderPrompt(input);
             return;
         }
         // Backspace
         if (key === '\x7f' || key === '\b') {
-            if (currentInput.length > 0) {
-                currentInput = currentInput.slice(0, -1);
-                process.stdout.write('\b \b');
-                // Update suggestions
-                if (currentInput.startsWith('/')) {
-                    clearSuggestions(suggestions.length);
-                    suggestions = getFilteredCommands(currentInput);
-                    selectedIndex = 0;
-                    if (suggestions.length > 0) {
-                        showingSuggestions = true;
-                        const newPromptLen = prompt.length + currentInput.length;
-                        renderSuggestions(suggestions, selectedIndex, newPromptLen);
-                    }
-                    else {
-                        showingSuggestions = false;
-                    }
+            if (input.length > 0) {
+                input = input.slice(0, -1);
+                if (input.startsWith('/')) {
+                    clearPalette(paletteCount);
+                    paletteIndex = 0;
+                    paletteCount = renderPalette(input, paletteIndex);
+                    showPalette = paletteCount > 0;
                 }
-                else {
-                    if (showingSuggestions) {
-                        clearSuggestions(suggestions.length);
-                        showingSuggestions = false;
-                        suggestions = [];
-                    }
+                else if (showPalette) {
+                    clearPalette(paletteCount);
+                    showPalette = false;
+                    paletteCount = 0;
                 }
+                renderPrompt(input);
             }
             return;
         }
-        // Regular character input
+        // Regular character
         if (key.length === 1 && key >= ' ') {
-            currentInput += key;
-            process.stdout.write(key);
-            // Check if typing slash command
-            if (currentInput.startsWith('/')) {
-                clearSuggestions(suggestions.length);
-                suggestions = getFilteredCommands(currentInput);
-                selectedIndex = 0;
-                if (suggestions.length > 0) {
-                    showingSuggestions = true;
-                    const newPromptLen = prompt.length + currentInput.length;
-                    renderSuggestions(suggestions, selectedIndex, newPromptLen);
-                }
-                else {
-                    showingSuggestions = false;
-                }
+            input += key;
+            if (input.startsWith('/')) {
+                clearPalette(paletteCount);
+                paletteIndex = 0;
+                paletteCount = renderPalette(input, paletteIndex);
+                showPalette = paletteCount > 0;
             }
+            renderPrompt(input);
         }
     };
     process.stdin.on('data', handleKey);
-    // Handle SIGINT
     process.on('SIGINT', () => {
+        screen.clear();
+        screen.moveTo(1, 1);
+        screen.showCursor();
         if (process.stdin.isTTY)
             process.stdin.setRawMode(false);
-        process.stdout.write('\n');
         options?.onExit?.();
+    });
+    // Handle terminal resize
+    process.stdout.on('resize', () => {
+        screen.clear();
+        renderHeader(projectName);
+        renderOutput();
+        if (showPalette) {
+            paletteCount = renderPalette(input, paletteIndex);
+        }
+        renderPrompt(input);
     });
     return new Promise(() => { });
 }

@@ -7,9 +7,10 @@ import { applyResponse } from './apply';
 import { collectWorkspace, buildContextString } from './workspace';
 import { getSession } from './session';
 import { getWorkspace } from './workspace_model';
-import { renderStartup, dim } from './ui';
 import { markFirstRunComplete, isFirstRun } from './settings';
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 
 type CommandHandler = () => void | Promise<void>;
 
@@ -26,24 +27,14 @@ async function handleDefault(): Promise<void> {
   // Restore previous session
   const restored = ws.restoreState();
 
-  // Get project name from directory
-  const projectName = path.basename(session.workingDirectory);
-
-  // Render startup - minimal
-  console.log(renderStartup(projectName));
-
-  // Restored message
-  if (restored) {
-    console.log(dim('Session restored.'));
-    console.log('');
-  }
-
   // Mark first run complete
   if (isFirstRun()) {
     markFirstRunComplete();
   }
 
   await startInteractive({
+    projectName: path.basename(session.workingDirectory),
+    restored,
     onExit: () => {
       ws.saveState();
       process.exit(0);
@@ -111,17 +102,13 @@ async function handleDoctor(): Promise<void> {
   console.log(`Node.js: ${process.version}`);
   console.log(`Platform: ${process.platform}`);
 
-  const fs = await import('fs');
-  const pathModule = await import('path');
-  const os = await import('os');
-  const configExists = fs.existsSync(pathModule.join(os.homedir(), '.zai'));
+  const configExists = fs.existsSync(path.join(os.homedir(), '.zai'));
   console.log(`Config dir: ${configExists ? 'exists' : 'missing'}`);
 
-  const { getSession } = await import('./session');
   const session = getSession();
   let writable = false;
   try {
-    const testFile = pathModule.join(session.workingDirectory, '.zai-test');
+    const testFile = path.join(session.workingDirectory, '.zai-test');
     fs.writeFileSync(testFile, 'test');
     fs.unlinkSync(testFile);
     writable = true;
