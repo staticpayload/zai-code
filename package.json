@@ -1,0 +1,29 @@
+{
+  "name": "zai-code",
+  "version": "0.0.1",
+  "description": "Z.ai Code CLI",
+  "main": "dist/cli.js",
+  "bin": {
+    "zcode": "./bin/zcode"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "cli",
+    "zai"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/keytar": "^4.4.0",
+    "@types/node": "^20.10.6",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "keytar": "^7.9.0"
+  }
+}
