@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as os from 'os';
 
 const SETTINGS_FILE = path.join(os.homedir(), '.zai', 'settings.json');
+const PROJECT_SETTINGS_FILE = '.zai/settings.json';
 
 export interface Settings {
   model: {
@@ -165,4 +166,53 @@ export function setNestedSetting(path: string, value: string): boolean {
   } catch {
     return false;
   }
+}
+
+// Load project settings from current directory if exists
+export function loadProjectSettings(projectPath?: string): Partial<Settings> | null {
+  const cwd = projectPath || process.cwd();
+  const projectSettingsPath = path.join(cwd, PROJECT_SETTINGS_FILE);
+
+  try {
+    if (fs.existsSync(projectSettingsPath)) {
+      const content = fs.readFileSync(projectSettingsPath, 'utf-8');
+      return JSON.parse(content);
+    }
+  } catch {
+    // Ignore
+  }
+
+  return null;
+}
+
+// Get effective settings (project overrides global)
+export function getEffectiveSettings(projectPath?: string): Settings {
+  const globalSettings = loadSettings();
+  const projectSettings = loadProjectSettings(projectPath);
+
+  if (!projectSettings) {
+    return globalSettings;
+  }
+
+  return deepMerge(globalSettings, projectSettings);
+}
+
+// Save project settings
+export function saveProjectSettings(settings: Partial<Settings>, projectPath?: string): void {
+  const cwd = projectPath || process.cwd();
+  const dir = path.join(cwd, '.zai');
+  const settingsPath = path.join(dir, 'settings.json');
+
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+}
+
+// Check if project settings exist
+export function hasProjectSettings(projectPath?: string): boolean {
+  const cwd = projectPath || process.cwd();
+  const projectSettingsPath = path.join(cwd, PROJECT_SETTINGS_FILE);
+  return fs.existsSync(projectSettingsPath);
 }

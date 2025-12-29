@@ -34,4 +34,8 @@ export declare function isFirstRun(): boolean;
 export declare function shouldShowColor(): boolean;
 export declare function shouldShowLogo(): boolean;
 export declare function setNestedSetting(path: string, value: string): boolean;
+export declare function loadProjectSettings(projectPath?: string): Partial<Settings> | null;
+export declare function getEffectiveSettings(projectPath?: string): Settings;
+export declare function saveProjectSettings(settings: Partial<Settings>, projectPath?: string): void;
+export declare function hasProjectSettings(projectPath?: string): boolean;
 //# sourceMappingURL=settings.d.ts.map

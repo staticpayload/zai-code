@@ -44,10 +44,15 @@ exports.isFirstRun = isFirstRun;
 exports.shouldShowColor = shouldShowColor;
 exports.shouldShowLogo = shouldShowLogo;
 exports.setNestedSetting = setNestedSetting;
+exports.loadProjectSettings = loadProjectSettings;
+exports.getEffectiveSettings = getEffectiveSettings;
+exports.saveProjectSettings = saveProjectSettings;
+exports.hasProjectSettings = hasProjectSettings;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const os = __importStar(require("os"));
 const SETTINGS_FILE = path.join(os.homedir(), '.zai', 'settings.json');
+const PROJECT_SETTINGS_FILE = '.zai/settings.json';
 const DEFAULT_SETTINGS = {
     model: {
         current: 'claude-sonnet-4-20250514',
@@ -176,5 +181,45 @@ function setNestedSetting(path, value) {
     catch {
         return false;
     }
+}
+// Load project settings from current directory if exists
+function loadProjectSettings(projectPath) {
+    const cwd = projectPath || process.cwd();
+    const projectSettingsPath = path.join(cwd, PROJECT_SETTINGS_FILE);
+    try {
+        if (fs.existsSync(projectSettingsPath)) {
+            const content = fs.readFileSync(projectSettingsPath, 'utf-8');
+            return JSON.parse(content);
+        }
+    }
+    catch {
+        // Ignore
+    }
+    return null;
+}
+// Get effective settings (project overrides global)
+function getEffectiveSettings(projectPath) {
+    const globalSettings = loadSettings();
+    const projectSettings = loadProjectSettings(projectPath);
+    if (!projectSettings) {
+        return globalSettings;
+    }
+    return deepMerge(globalSettings, projectSettings);
+}
+// Save project settings
+function saveProjectSettings(settings, projectPath) {
+    const cwd = projectPath || process.cwd();
+    const dir = path.join(cwd, '.zai');
+    const settingsPath = path.join(dir, 'settings.json');
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+}
+// Check if project settings exist
+function hasProjectSettings(projectPath) {
+    const cwd = projectPath || process.cwd();
+    const projectSettingsPath = path.join(cwd, PROJECT_SETTINGS_FILE);
+    return fs.existsSync(projectSettingsPath);
 }
 //# sourceMappingURL=settings.js.map
