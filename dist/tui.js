@@ -39,11 +39,11 @@ const session_1 = require("./session");
 const orchestrator_1 = require("./orchestrator");
 const git_1 = require("./git");
 const settings_1 = require("./settings");
-const profiles_1 = require("./profiles");
 const agents_1 = require("./agents");
 // Command definitions
 const COMMANDS = [
     { name: 'help', description: 'Show all commands' },
+    { name: 'ask', description: 'Switch to ask mode (read-only)' },
     { name: 'plan', description: 'Generate execution plan' },
     { name: 'generate', description: 'Create file changes' },
     { name: 'diff', description: 'Review pending changes' },
@@ -238,12 +238,11 @@ async function startTUI(options) {
         const model = (0, settings_1.getModel)();
         const mode = (0, session_1.getSession)().mode;
         const gitStatus = gitInfo.isRepo ? `${gitInfo.branch}${gitInfo.isDirty ? '*' : ''}` : 'no-git';
-        const profile = (0, profiles_1.getActiveProfileName)() || 'custom';
-        const left = `{bold}~{/bold}`;
-        const center = `no {bold}sandbox{/bold} {gray-fg}(see /docs){/gray-fg}`;
-        const right = `{bold}Manual{/bold} ({cyan-fg}${model}{/cyan-fg}) {bold}/model{/bold}`;
+        const left = `{bold}[${mode}]{/bold}`;
+        const center = `${gitStatus}`;
+        const right = `{cyan-fg}${model}{/cyan-fg}`;
         const width = screen.width || 80;
-        const padding = Math.max(0, Math.floor((width - 60) / 2));
+        const padding = Math.max(0, Math.floor((width - 40) / 2));
         statusBar.setContent(`${left}${' '.repeat(padding)}${center}${' '.repeat(padding)}${right}`);
     }
     // Command palette

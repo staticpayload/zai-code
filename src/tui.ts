@@ -18,6 +18,7 @@ export interface TUIOptions {
 // Command definitions
 const COMMANDS = [
     { name: 'help', description: 'Show all commands' },
+    { name: 'ask', description: 'Switch to ask mode (read-only)' },
     { name: 'plan', description: 'Generate execution plan' },
     { name: 'generate', description: 'Create file changes' },
     { name: 'diff', description: 'Review pending changes' },
@@ -227,14 +228,13 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         const model = getModel();
         const mode = getSession().mode;
         const gitStatus = gitInfo.isRepo ? `${gitInfo.branch}${gitInfo.isDirty ? '*' : ''}` : 'no-git';
-        const profile = getActiveProfileName() || 'custom';
 
-        const left = `{bold}~{/bold}`;
-        const center = `no {bold}sandbox{/bold} {gray-fg}(see /docs){/gray-fg}`;
-        const right = `{bold}Manual{/bold} ({cyan-fg}${model}{/cyan-fg}) {bold}/model{/bold}`;
+        const left = `{bold}[${mode}]{/bold}`;
+        const center = `${gitStatus}`;
+        const right = `{cyan-fg}${model}{/cyan-fg}`;
 
         const width = (screen.width as number) || 80;
-        const padding = Math.max(0, Math.floor((width - 60) / 2));
+        const padding = Math.max(0, Math.floor((width - 40) / 2));
 
         statusBar.setContent(`${left}${' '.repeat(padding)}${center}${' '.repeat(padding)}${right}`);
     }
