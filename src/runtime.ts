@@ -261,27 +261,38 @@ function httpsPost(
   });
 }
 
-interface AnthropicMessage {
+interface ChatMessage {
   role: string;
   content: string;
 }
 
-interface AnthropicRequest {
+// OpenAI-compatible request format (used by Zhipu)
+interface ChatRequest {
   model: string;
   max_tokens: number;
-  messages: AnthropicMessage[];
-  system?: string;
+  messages: ChatMessage[];
 }
 
-interface AnthropicResponse {
-  content: Array<{ type: string; text: string }>;
+// OpenAI-compatible response format
+interface ChatResponse {
+  id?: string;
+  choices?: Array<{
+    index: number;
+    message: {
+      role: string;
+      content: string;
+    };
+    finish_reason?: string;
+  }>;
   usage?: {
-    input_tokens: number;
-    output_tokens: number;
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
   };
   error?: {
     message: string;
-    type: string;
+    type?: string;
+    code?: string;
   };
 }
 
@@ -290,41 +301,41 @@ const DEFAULT_MAX_TOKENS = 4096;
 
 async function makeRequest(
   url: string,
-  anthropicRequest: AnthropicRequest,
+  chatRequest: ChatRequest,
   apiKey: string
-): Promise<{ success: boolean; data?: AnthropicResponse; error?: string }> {
+): Promise<{ success: boolean; data?: ChatResponse; error?: string }> {
   try {
     const response = await httpsPost(url, {
       method: 'POST',
       headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify(anthropicRequest),
+      body: JSON.stringify(chatRequest),
     });
 
     if (response.statusCode !== 200) {
       let errorMessage = `HTTP ${response.statusCode}`;
       try {
-        const errorBody = JSON.parse(response.body) as AnthropicResponse;
+        const errorBody = JSON.parse(response.body) as ChatResponse;
         if (errorBody.error?.message) {
           errorMessage = errorBody.error.message;
         }
       } catch {
         if (response.body) {
-          errorMessage = response.body;
+          errorMessage = response.body.substring(0, 500);
         }
       }
       return { success: false, error: errorMessage };
     }
 
-    const anthropicResponse = JSON.parse(response.body) as AnthropicResponse;
+    const chatResponse = JSON.parse(response.body) as ChatResponse;
 
-    if (anthropicResponse.error) {
-      return { success: false, error: anthropicResponse.error.message };
+    if (chatResponse.error) {
+      return { success: false, error: chatResponse.error.message };
     }
 
-    return { success: true, data: anthropicResponse };
+    return { success: true, data: chatResponse };
   } catch (error) {
     return {
       success: false,
@@ -333,12 +344,9 @@ async function makeRequest(
   }
 }
 
-function extractOutputText(anthropicResponse: AnthropicResponse): string {
-  if (anthropicResponse.content && anthropicResponse.content.length > 0) {
-    const textBlock = anthropicResponse.content.find((block) => block.type === 'text');
-    if (textBlock) {
-      return textBlock.text;
-    }
+function extractOutputText(chatResponse: ChatResponse): string {
+  if (chatResponse.choices && chatResponse.choices.length > 0) {
+    return chatResponse.choices[0].message?.content || '';
   }
   return '';
 }
@@ -348,8 +356,8 @@ export async function execute(
   apiKey: string
 ): Promise<ExecutionResponse> {
   const config = loadConfig();
-  const baseUrl = (config.api as { baseUrl?: string })?.baseUrl || 'https://api.z.ai/api/paas/v4/';
-  const url = baseUrl.endsWith('/') ? `${baseUrl}messages` : `${baseUrl}/messages`;
+  const baseUrl = (config.api as { baseUrl?: string })?.baseUrl || 'https://open.bigmodel.cn/api/paas/v4/';
+  const url = baseUrl.endsWith('/') ? `${baseUrl}chat/completions` : `${baseUrl}/chat/completions`;
 
   const model = request.model || getModel();
   const maxTokens = request.maxTokens || DEFAULT_MAX_TOKENS;
@@ -374,15 +382,18 @@ export async function execute(
   async function attemptRequest(
     instruction: string,
     system: string
-  ): Promise<{ parsedData?: unknown; outputText?: string; error?: string; usage?: AnthropicResponse['usage'] }> {
-    const anthropicRequest: AnthropicRequest = {
+  ): Promise<{ parsedData?: unknown; outputText?: string; error?: string; usage?: ChatResponse['usage'] }> {
+    // OpenAI format: system prompt as first message
+    const chatRequest: ChatRequest = {
       model,
       max_tokens: maxTokens,
-      messages: [{ role: 'user', content: instruction }],
-      system,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: instruction }
+      ],
     };
 
-    const result = await makeRequest(url, anthropicRequest, apiKey);
+    const result = await makeRequest(url, chatRequest, apiKey);
     if (!result.success || !result.data) {
       return { error: result.error };
     }
@@ -393,7 +404,12 @@ export async function execute(
     try {
       parsedData = JSON.parse(outputText);
     } catch {
-      return { error: 'Failed to parse response as JSON' };
+      // Return raw text if not JSON
+      return {
+        parsedData: { status: 'success', output: outputText },
+        outputText,
+        usage: result.data.usage
+      };
     }
 
     return {
@@ -421,8 +437,8 @@ export async function execute(
       output: (initialResult.parsedData ?? initialResult.outputText ?? '') as string | object,
       usage: initialResult.usage
         ? {
-          inputTokens: initialResult.usage.input_tokens,
-          outputTokens: initialResult.usage.output_tokens,
+          inputTokens: initialResult.usage.prompt_tokens,
+          outputTokens: initialResult.usage.completion_tokens,
         }
         : undefined,
     };
@@ -437,8 +453,8 @@ export async function execute(
       output: (initialResult.parsedData ?? initialResult.outputText ?? '') as string | object,
       usage: initialResult.usage
         ? {
-          inputTokens: initialResult.usage.input_tokens,
-          outputTokens: initialResult.usage.output_tokens,
+          inputTokens: initialResult.usage.prompt_tokens,
+          outputTokens: initialResult.usage.completion_tokens,
         }
         : undefined,
     };
@@ -464,8 +480,8 @@ export async function execute(
       output: (retryResult.parsedData ?? retryResult.outputText ?? '') as string | object,
       usage: retryResult.usage
         ? {
-          inputTokens: retryResult.usage.input_tokens,
-          outputTokens: retryResult.usage.output_tokens,
+          inputTokens: retryResult.usage.prompt_tokens,
+          outputTokens: retryResult.usage.completion_tokens,
         }
         : undefined,
     };
