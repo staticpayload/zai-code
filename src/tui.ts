@@ -1,5 +1,5 @@
 import * as blessed from 'blessed';
-import { getSession } from './session';
+import { getSession, getIntent } from './session';
 import { orchestrate } from './orchestrator';
 import { getAvailableCommands } from './commands';
 import { getGitInfo } from './git';
@@ -8,6 +8,7 @@ import { getActiveProfileName } from './profiles';
 import { getWorkspace } from './workspace_model';
 import { hasAgentsConfig } from './agents';
 import * as path from 'path';
+import * as fs from 'fs';
 
 export interface TUIOptions {
     projectName: string;
@@ -15,34 +16,135 @@ export interface TUIOptions {
     onExit?: () => void;
 }
 
-// Command definitions
+// Command definitions with categories and shortcuts
 const COMMANDS = [
-    { name: 'help', description: 'Show all commands' },
-    { name: 'ask', description: 'Switch to ask mode (read-only)' },
-    { name: 'plan', description: 'Generate execution plan' },
-    { name: 'generate', description: 'Create file changes' },
-    { name: 'diff', description: 'Review pending changes' },
-    { name: 'apply', description: 'Apply changes' },
-    { name: 'undo', description: 'Rollback last operation' },
-    { name: 'model', description: 'Select AI model' },
-    { name: 'mode', description: 'Set mode' },
-    { name: 'settings', description: 'Open settings menu' },
-    { name: 'git', description: 'Show git status' },
-    { name: 'reset', description: 'Reset session' },
-    { name: 'exit', description: 'Exit zcode' },
+    // Quick actions (most used)
+    { name: 'do', description: 'Quick: plan + generate', category: 'quick', shortcut: 'Ctrl+D' },
+    { name: 'run', description: 'Auto: plan + generate + apply', category: 'quick', shortcut: 'Ctrl+R' },
+    { name: 'ask', description: 'Quick question', category: 'quick', shortcut: 'Ctrl+A' },
+    { name: 'fix', description: 'Debug mode task', category: 'quick', shortcut: 'Ctrl+F' },
+    
+    // Workflow
+    { name: 'plan', description: 'Generate execution plan', category: 'workflow', shortcut: 'Ctrl+P' },
+    { name: 'generate', description: 'Create file changes', category: 'workflow', shortcut: 'Ctrl+G' },
+    { name: 'diff', description: 'Review pending changes', category: 'workflow' },
+    { name: 'apply', description: 'Apply changes', category: 'workflow' },
+    { name: 'undo', description: 'Rollback last operation', category: 'workflow', shortcut: 'Ctrl+Z' },
+    { name: 'retry', description: 'Retry last failed operation', category: 'workflow' },
+    { name: 'clear', description: 'Clear current task', category: 'workflow' },
+    
+    // Files
+    { name: 'open', description: 'Add file to context', category: 'files' },
+    { name: 'close', description: 'Remove file from context', category: 'files' },
+    { name: 'files', description: 'List open files', category: 'files' },
+    { name: 'search', description: 'Search files', category: 'files' },
+    { name: 'read', description: 'View file contents', category: 'files' },
+    { name: 'tree', description: 'Show file tree', category: 'files' },
+    
+    // Modes
+    { name: 'mode', description: 'Set mode (edit/ask/auto/debug)', category: 'modes' },
+    { name: 'model', description: 'Select AI model', category: 'modes' },
+    { name: 'dry-run', description: 'Toggle dry-run mode', category: 'modes' },
+    
+    // Git
+    { name: 'git', description: 'Git operations', category: 'git' },
+    { name: 'commit', description: 'AI-powered commit', category: 'git' },
+    
+    // System
+    { name: 'help', description: 'Show all commands', category: 'system' },
+    { name: 'settings', description: 'Open settings menu', category: 'system' },
+    { name: 'status', description: 'Show session status', category: 'system' },
+    { name: 'doctor', description: 'System health check', category: 'system' },
+    { name: 'version', description: 'Show version', category: 'system' },
+    { name: 'reset', description: 'Reset session', category: 'system' },
+    { name: 'exit', description: 'Exit zcode', category: 'system', shortcut: 'Ctrl+C' },
 ];
 
-// ASCII Logo
+// Smart suggestions based on context
+function getSmartSuggestions(): string[] {
+    const session = getSession();
+    const suggestions: string[] = [];
+    
+    // Based on current state
+    if (session.pendingActions || session.lastDiff) {
+        suggestions.push('/diff - Review changes');
+        suggestions.push('/apply - Apply changes');
+    } else if (session.lastPlan && session.lastPlan.length > 0) {
+        suggestions.push('/generate - Create changes');
+    } else if (session.currentIntent) {
+        suggestions.push('/plan - Create plan');
+    }
+    
+    // Based on mode
+    if (session.mode === 'edit' && !session.currentIntent) {
+        suggestions.push('Type a task to get started');
+    }
+    
+    // Git suggestions
+    const gitInfo = getGitInfo(session.workingDirectory);
+    if (gitInfo.isRepo && gitInfo.isDirty) {
+        suggestions.push('/commit - Commit changes');
+    }
+    
+    return suggestions.slice(0, 3);
+}
+
+// Spinner frames for loading animation
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+const PROGRESS_CHARS = ['▱', '▰'];
+
+// Get contextual placeholder based on mode
+function getPlaceholder(): string {
+    const session = getSession();
+    const mode = session.mode;
+    
+    switch (mode) {
+        case 'auto':
+            return 'Type a task to execute automatically...';
+        case 'ask':
+            return 'Ask a question about your code...';
+        case 'debug':
+            return 'Describe the bug or error...';
+        case 'review':
+            return 'What would you like reviewed?';
+        case 'explain':
+            return 'What would you like explained?';
+        default:
+            if (session.pendingActions) return '/apply to execute, /diff to review';
+            if (session.lastPlan?.length) return '/generate to create changes';
+            if (session.currentIntent) return '/plan to create execution plan';
+            return 'Describe what you want to build...';
+    }
+}
+
+// Recent commands history
+const commandHistory: string[] = [];
+let historyIndex = -1;
+
+// ASCII Logo - cleaner, more modern
 const ASCII_LOGO = `
-{bold}{blue-fg}███████╗{/blue-fg}{cyan-fg} █████╗ {/cyan-fg}{blue-fg}██╗{/blue-fg}    {cyan-fg} ██████╗ ██████╗ ██████╗ ███████╗{/cyan-fg}{/bold}
-{bold}{blue-fg}╚══███╔╝{/blue-fg}{cyan-fg}██╔══██╗{/cyan-fg}{blue-fg}██║{/blue-fg}    {cyan-fg}██╔════╝██╔═══██╗██╔══██╗██╔════╝{/cyan-fg}{/bold}
-{bold}{blue-fg}  ███╔╝ {/blue-fg}{cyan-fg}███████║{/cyan-fg}{blue-fg}██║{/blue-fg}    {cyan-fg}██║     ██║   ██║██║  ██║█████╗  {/cyan-fg}{/bold}
-{bold}{blue-fg} ███╔╝  {/blue-fg}{cyan-fg}██╔══██║{/cyan-fg}{blue-fg}██║{/blue-fg}    {cyan-fg}██║     ██║   ██║██║  ██║██╔══╝  {/cyan-fg}{/bold}
-{bold}{blue-fg}███████╗{/blue-fg}{cyan-fg}██║  ██║{/cyan-fg}{blue-fg}██║{/blue-fg}    {cyan-fg}╚██████╗╚██████╔╝██████╔╝███████╗{/cyan-fg}{/bold}
-{bold}{blue-fg}╚══════╝{/blue-fg}{cyan-fg}╚═╝  ╚═╝{/cyan-fg}{blue-fg}╚═╝{/blue-fg}    {cyan-fg} ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝{/cyan-fg}{/bold}
+{bold}{cyan-fg}╭─────────────────────────────────────╮{/cyan-fg}{/bold}
+{bold}{cyan-fg}│{/cyan-fg}  {blue-fg}███████{/blue-fg} {cyan-fg}█████{/cyan-fg}  {blue-fg}██{/blue-fg}    {cyan-fg}code{/cyan-fg}       {cyan-fg}│{/cyan-fg}{/bold}
+{bold}{cyan-fg}│{/cyan-fg}     {blue-fg}███{/blue-fg}  {cyan-fg}██{/cyan-fg}  {cyan-fg}██{/cyan-fg} {blue-fg}██{/blue-fg}    {gray-fg}v1.3.0{/gray-fg}     {cyan-fg}│{/cyan-fg}{/bold}
+{bold}{cyan-fg}│{/cyan-fg}    {blue-fg}███{/blue-fg}   {cyan-fg}█████{/cyan-fg}  {blue-fg}██{/blue-fg}               {cyan-fg}│{/cyan-fg}{/bold}
+{bold}{cyan-fg}│{/cyan-fg}   {blue-fg}███{/blue-fg}    {cyan-fg}██{/cyan-fg}  {cyan-fg}██{/cyan-fg} {blue-fg}██{/blue-fg}    {gray-fg}AI-native{/gray-fg}  {cyan-fg}│{/cyan-fg}{/bold}
+{bold}{cyan-fg}│{/cyan-fg}  {blue-fg}███████{/blue-fg} {cyan-fg}██{/cyan-fg}  {cyan-fg}██{/cyan-fg} {blue-fg}██{/blue-fg}    {gray-fg}code editor{/gray-fg}{cyan-fg}│{/cyan-fg}{/bold}
+{bold}{cyan-fg}╰─────────────────────────────────────╯{/cyan-fg}{/bold}
 `;
 
-const MINIMAL_LOGO = '{bold}{blue-fg}zai{/blue-fg} {cyan-fg}code{/cyan-fg}{/bold}';
+const MINIMAL_LOGO = '{bold}{blue-fg}⚡{/blue-fg} {cyan-fg}zai·code{/cyan-fg}{/bold}  {gray-fg}AI-native code editor{/gray-fg}';
+
+// Welcome tips - rotate through these
+const WELCOME_TIPS = [
+    'Type a task naturally, like "add error handling to auth.ts"',
+    'Use /do <task> for quick plan+generate in one step',
+    'Use /run <task> for full auto execution (YOLO mode)',
+    'Press Ctrl+P to quickly plan, Ctrl+G to generate',
+    'Use /ask for quick questions without changing mode',
+    'Try /fix <problem> to quickly debug issues',
+    '/commit generates AI-powered commit messages',
+    'Use /mode auto for autonomous execution',
+];
 
 export async function startTUI(options: TUIOptions): Promise<void> {
     const { projectName, restored, onExit } = options;
@@ -62,24 +164,34 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         fullUnicode: true,
         dockBorders: true,
         autoPadding: true,
-        warnings: false, // Suppress blessed warnings
+        warnings: false,
     });
 
-    // Theme colors
+    // Theme colors - modern dark theme
     const theme = {
         bg: 'black',
         fg: 'white',
         border: 'blue',
         highlight: 'cyan',
+        accent: 'magenta',
+        success: 'green',
+        warning: 'yellow',
+        error: 'red',
         gray: 'gray'
     };
+
+    // State for spinner and processing
+    let spinnerInterval: NodeJS.Timeout | null = null;
+    let spinnerFrame = 0;
+    let isProcessing = false;
+    let currentTip = Math.floor(Math.random() * WELCOME_TIPS.length);
 
     // Header with logo
     const header = blessed.box({
         top: 0,
         left: 0,
         width: '100%',
-        height: shouldShowLogo() ? 8 : 2,
+        height: shouldShowLogo() ? 9 : 2,
         tags: true,
         content: shouldShowLogo() ? ASCII_LOGO : MINIMAL_LOGO,
         style: {
@@ -88,17 +200,14 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         },
     });
 
-    // Tips section
-    const tips = blessed.box({
-        top: shouldShowLogo() ? 8 : 2,
+    // Quick actions bar - keyboard shortcuts
+    const quickActions = blessed.box({
+        top: shouldShowLogo() ? 9 : 2,
         left: 0,
         width: '100%',
-        height: 4,
+        height: 1,
         tags: true,
-        content: `{bold}Tips for getting started:{/bold}
-1. Type a task or question to begin.
-2. Use {bold}/commands{/bold} for direct actions.
-3. {bold}/help{/bold} for more information.`,
+        content: '{gray-fg}Quick:{/gray-fg} {cyan-fg}^D{/cyan-fg}do {cyan-fg}^R{/cyan-fg}run {cyan-fg}^P{/cyan-fg}plan {cyan-fg}^G{/cyan-fg}gen {cyan-fg}^Z{/cyan-fg}undo',
         style: {
             fg: theme.fg,
             bg: theme.bg,
@@ -106,8 +215,80 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         padding: { left: 1 },
     });
 
+    // Context/status line
+    const contextTop = shouldShowLogo() ? 10 : 3;
+    const contextLine = blessed.box({
+        top: contextTop,
+        left: 0,
+        width: '100%',
+        height: 1,
+        tags: true,
+        style: {
+            fg: theme.fg,
+            bg: theme.bg,
+        },
+        padding: { left: 1 },
+    });
+
+    // Update context line with current state
+    function updateContextLine() {
+        const gitInfo = getGitInfo(session.workingDirectory);
+        const model = getModel();
+        const mode = session.mode;
+        const intent = getIntent();
+        const fileCount = session.openFiles.length;
+        
+        let parts: string[] = [];
+        parts.push(`{bold}${projectName}{/bold}`);
+        
+        if (gitInfo.isRepo) {
+            const dirty = gitInfo.isDirty ? '{yellow-fg}*{/yellow-fg}' : '';
+            parts.push(`{gray-fg}git:{/gray-fg}${gitInfo.branch}${dirty}`);
+        }
+        
+        const modeColors: Record<string, string> = {
+            'auto': 'magenta', 'edit': 'cyan', 'ask': 'green',
+            'debug': 'red', 'review': 'yellow', 'explain': 'blue'
+        };
+        const modeColor = modeColors[mode] || 'cyan';
+        parts.push(`{${modeColor}-fg}${mode}{/${modeColor}-fg}`);
+        parts.push(`{gray-fg}${model}{/gray-fg}`);
+        
+        if (fileCount > 0) parts.push(`{gray-fg}${fileCount} file(s){/gray-fg}`);
+        if (intent) {
+            const truncated = intent.length > 30 ? intent.substring(0, 30) + '...' : intent;
+            parts.push(`{yellow-fg}→ ${truncated}{/yellow-fg}`);
+        }
+        
+        contextLine.setContent(parts.join('  {gray-fg}│{/gray-fg}  '));
+    }
+
+    // Tips section - smart suggestions
+    const tipsTop = contextTop + 1;
+    const tips = blessed.box({
+        top: tipsTop,
+        left: 0,
+        width: '100%',
+        height: 2,
+        tags: true,
+        style: {
+            fg: theme.fg,
+            bg: theme.bg,
+        },
+        padding: { left: 1 },
+    });
+
+    function updateTips() {
+        const smartSuggestions = getSmartSuggestions();
+        if (smartSuggestions.length > 0) {
+            tips.setContent(`{gray-fg}💡 ${smartSuggestions.join('  │  ')}{/gray-fg}`);
+        } else {
+            tips.setContent(`{gray-fg}💡 ${WELCOME_TIPS[currentTip]}{/gray-fg}`);
+        }
+    }
+
     // Warning box (if in home directory)
-    const warningTop = shouldShowLogo() ? 12 : 6;
+    const warningTop = tipsTop + 2;
     const warning = blessed.box({
         top: warningTop,
         left: 0,
@@ -132,31 +313,15 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     // Check warnings
     const gitInfo = getGitInfo(session.workingDirectory);
     if (session.workingDirectory === require('os').homedir()) {
-        warning.setContent('You are running in your home directory. It is recommended to run in a project-specific directory.');
+        warning.setContent('{yellow-fg}⚠{/yellow-fg} Running in home directory. Consider using a project directory.');
         warning.show();
     } else if (!gitInfo.isRepo) {
-        warning.setContent('Not a git repository. Changes cannot be tracked.');
+        warning.setContent('{yellow-fg}⚠{/yellow-fg} Not a git repository. Changes cannot be tracked.');
         warning.show();
     }
 
-    // Context line (Using: X files)
-    const contextTop = warning.hidden ? warningTop : warningTop + 3;
-    const context = blessed.box({
-        top: contextTop,
-        left: 0,
-        width: '100%',
-        height: 1,
-        tags: true,
-        content: `{bold}${projectName}{/bold}  ·  ${session.openFiles.length || 0} file(s) in context`,
-        style: {
-            fg: theme.fg,
-            bg: theme.bg,
-        },
-        padding: { left: 1 },
-    });
-
     // Main output area
-    const outputTop = contextTop + 2;
+    const outputTop = warning.hidden ? warningTop : warningTop + 3;
     const output = blessed.log({
         top: outputTop,
         left: 0,
@@ -179,7 +344,41 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         padding: { left: 1, right: 1 },
     });
 
-    // Input box container
+    // Processing spinner indicator
+    const processingIndicator = blessed.box({
+        bottom: 5,
+        right: 2,
+        width: 25,
+        height: 1,
+        tags: true,
+        style: {
+            fg: theme.highlight,
+            bg: theme.bg,
+        },
+        hidden: true,
+    });
+
+    function startSpinner(message: string = 'Processing') {
+        isProcessing = true;
+        processingIndicator.show();
+        spinnerInterval = setInterval(() => {
+            spinnerFrame = (spinnerFrame + 1) % SPINNER_FRAMES.length;
+            processingIndicator.setContent(`{cyan-fg}${SPINNER_FRAMES[spinnerFrame]} ${message}...{/cyan-fg}`);
+            screen.render();
+        }, 80);
+    }
+
+    function stopSpinner() {
+        isProcessing = false;
+        if (spinnerInterval) {
+            clearInterval(spinnerInterval);
+            spinnerInterval = null;
+        }
+        processingIndicator.hide();
+        screen.render();
+    }
+
+    // Input box container with mode indicator
     const inputContainer = blessed.box({
         bottom: 2,
         left: 0,
@@ -197,19 +396,32 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         },
     });
 
-    // Input prompt symbol
-    const inputPrompt = blessed.text({
+    // Mode indicator icon
+    const modeIndicator = blessed.text({
         parent: inputContainer,
         left: 1,
         top: 0,
-        content: `{bold}{blue-fg}❯{/blue-fg}{/bold}`,
         tags: true,
         style: {
             bg: theme.bg
         }
     });
 
-    // Input textbox - higher z-index to be on top
+    function updateModeIndicator() {
+        const mode = session.mode;
+        const modeColors: Record<string, string> = {
+            'auto': 'magenta', 'edit': 'cyan', 'ask': 'green',
+            'debug': 'red', 'review': 'yellow', 'explain': 'blue'
+        };
+        const color = modeColors[mode] || 'cyan';
+        const icons: Record<string, string> = {
+            'auto': '⚡', 'edit': '❯', 'ask': '?', 'debug': '🔧', 'review': '👁', 'explain': '📖'
+        };
+        const icon = icons[mode] || '❯';
+        modeIndicator.setContent(`{bold}{${color}-fg}${icon}{/${color}-fg}{/bold}`);
+    }
+
+    // Input textbox
     const input = blessed.textbox({
         parent: inputContainer,
         left: 3,
@@ -225,10 +437,29 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         },
     });
 
-    // NOTE: Removed placeholder text element entirely to prevent overlap issues
-    // The tips section already explains how to use the interface
+    // Placeholder text
+    const placeholder = blessed.text({
+        parent: inputContainer,
+        left: 4,
+        top: 0,
+        tags: true,
+        style: {
+            fg: theme.gray,
+            bg: theme.bg,
+        },
+    });
 
-    // Status bar at bottom
+    function updatePlaceholder() {
+        const val = input.getValue();
+        if (!val || val.length === 0) {
+            placeholder.setContent(`{gray-fg}${getPlaceholder()}{/gray-fg}`);
+            placeholder.show();
+        } else {
+            placeholder.hide();
+        }
+    }
+
+    // Status bar at bottom - more informative
     const statusBar = blessed.box({
         bottom: 0,
         left: 0,
@@ -242,35 +473,47 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         padding: { left: 1, right: 1 },
     });
 
-    // Update status bar
+    // Update status bar with state
     function updateStatusBar() {
         const model = getModel();
         const mode = getSession().mode;
         const gitStatus = gitInfo.isRepo ? `${gitInfo.branch}${gitInfo.isDirty ? '*' : ''}` : 'no-git';
+        const dryRun = session.dryRun ? ' {yellow-fg}[DRY]{/yellow-fg}' : '';
 
-        const left = `{bold}[${mode}]{/bold}`;
+        // State indicator
+        let state = '{green-fg}ready{/green-fg}';
+        if (session.pendingActions || session.lastDiff) {
+            state = '{yellow-fg}pending{/yellow-fg}';
+        } else if (session.lastPlan && session.lastPlan.length > 0) {
+            state = '{cyan-fg}planned{/cyan-fg}';
+        } else if (session.currentIntent) {
+            state = '{blue-fg}intent{/blue-fg}';
+        }
+
+        const left = `{bold}[${mode}]{/bold} ${state}${dryRun}`;
         const center = `${gitStatus}`;
-        const right = `{cyan-fg}${model}{/cyan-fg}`;
+        const right = `{cyan-fg}${model}{/cyan-fg} {gray-fg}/help{/gray-fg}`;
 
         const width = (screen.width as number) || 80;
-        const padding = Math.max(0, Math.floor((width - 40) / 2));
+        const padding = Math.max(0, Math.floor((width - 50) / 2));
 
         statusBar.setContent(`${left}${' '.repeat(padding)}${center}${' '.repeat(padding)}${right}`);
     }
 
-    // Command palette - NO keys/mouse to prevent stealing focus
+    // Command palette - enhanced
     const palette = blessed.list({
         bottom: 5,
         left: 1,
-        width: 40,
-        height: 10,
+        width: 55,
+        height: 12,
         tags: true,
-        keys: false,  // CRITICAL: Don't let palette handle keys
-        mouse: false, // CRITICAL: Don't let palette handle mouse
-        interactive: false, // Not interactive - we handle navigation manually
+        keys: false,
+        mouse: false,
+        interactive: false,
         border: {
             type: 'line',
         },
+        label: ' Commands ',
         style: {
             fg: theme.fg,
             bg: theme.bg,
@@ -287,43 +530,111 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         hidden: true,
     });
 
+    // File autocomplete
+    const fileAutocomplete = blessed.list({
+        bottom: 5,
+        left: 1,
+        width: 60,
+        height: 10,
+        tags: true,
+        keys: false,
+        mouse: false,
+        interactive: false,
+        border: {
+            type: 'line',
+        },
+        label: ' Files ',
+        style: {
+            fg: theme.fg,
+            bg: theme.bg,
+            border: {
+                fg: theme.success,
+                bg: theme.bg
+            },
+            selected: {
+                bg: theme.success,
+                fg: theme.bg,
+                bold: true,
+            },
+        },
+        hidden: true,
+    });
+
     // Add all elements to screen
     screen.append(header);
+    screen.append(quickActions);
+    screen.append(contextLine);
     screen.append(tips);
     screen.append(warning);
-    screen.append(context);
     screen.append(output);
+    screen.append(processingIndicator);
     screen.append(inputContainer);
     screen.append(statusBar);
     screen.append(palette);
+    screen.append(fileAutocomplete);
 
     // Initial render
+    updateContextLine();
+    updateTips();
     updateStatusBar();
+    updateModeIndicator();
+    updatePlaceholder();
     input.focus();
     screen.render();
 
-    // Restored message
+    // Welcome messages
     if (restored) {
-        output.log('{gray-fg}Session restored.{/gray-fg}');
+        output.log('{green-fg}✓{/green-fg} Session restored');
+        if (session.currentIntent) {
+            output.log(`{gray-fg}  Task: ${session.currentIntent.substring(0, 60)}...{/gray-fg}`);
+        }
+    } else {
+        output.log('{cyan-fg}Welcome to zai·code!{/cyan-fg} {gray-fg}Type a task or /help{/gray-fg}');
     }
 
     // agents.md notice
     if (hasAgentsConfig(session.workingDirectory)) {
-        output.log('{green-fg}agents.md detected and applied{/green-fg}');
+        output.log('{green-fg}✓{/green-fg} agents.md detected');
     }
+    output.log('');
 
     // --- LOGIC ---
 
     let showPalette = false;
+    let showFileAutocomplete = false;
+    let autocompleteFiles: string[] = [];
 
     function updatePalette(filter: string) {
         const query = filter.replace(/^\//, '').toLowerCase();
-        const filtered = COMMANDS.filter(c => c.name.startsWith(query));
-        palette.setItems(filtered.map(c => `{bold}/${c.name}{/bold}  {gray-fg}${c.description}{/gray-fg}`));
-
-        // Reset selection to top on new filter
+        const filtered = COMMANDS.filter(c => 
+            c.name.startsWith(query) || c.description.toLowerCase().includes(query)
+        );
+        
+        const items = filtered.slice(0, 10).map(c => {
+            const shortcut = c.shortcut ? ` {gray-fg}${c.shortcut}{/gray-fg}` : '';
+            return `{bold}{cyan-fg}/${c.name}{/cyan-fg}{/bold}  ${c.description}${shortcut}`;
+        });
+        
+        palette.setItems(items);
         if (filtered.length > 0) {
             palette.select(0);
+        }
+    }
+
+    function updateFileAutocomplete(query: string) {
+        const ws = getWorkspace(session.workingDirectory);
+        ws.indexFileTree();
+        const files = ws.getFileIndex();
+        
+        const pattern = query.toLowerCase();
+        autocompleteFiles = files
+            .filter(f => f.path.toLowerCase().includes(pattern))
+            .slice(0, 10)
+            .map(f => f.path);
+        
+        fileAutocomplete.setItems(autocompleteFiles.map(f => `{green-fg}📄{/green-fg} ${f}`));
+        if (autocompleteFiles.length > 0) {
+            fileAutocomplete.select(0);
         }
     }
 
@@ -332,10 +643,21 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         if (show) {
             updatePalette(filter);
             palette.show();
-            // CRITICAL: Do NOT focus palette. Keep input focused.
             screen.render();
         } else {
             palette.hide();
+            screen.render();
+        }
+    }
+
+    function toggleFileAutocomplete(show: boolean, query: string = '') {
+        showFileAutocomplete = show;
+        if (show && query) {
+            updateFileAutocomplete(query);
+            fileAutocomplete.show();
+            screen.render();
+        } else {
+            fileAutocomplete.hide();
             screen.render();
         }
     }
@@ -344,7 +666,17 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     async function processInput(value: string) {
         if (!value.trim()) return;
 
-        output.log(`{cyan-fg}>{/cyan-fg} ${value}`);
+        // Add to command history
+        commandHistory.unshift(value);
+        if (commandHistory.length > 50) commandHistory.pop();
+        historyIndex = -1;
+
+        // Format input display
+        const isCommand = value.startsWith('/');
+        const inputDisplay = isCommand 
+            ? `{cyan-fg}❯{/cyan-fg} {bold}${value}{/bold}`
+            : `{cyan-fg}❯{/cyan-fg} ${value}`;
+        output.log(inputDisplay);
         screen.render();
 
         const trimmed = value.trim();
@@ -381,23 +713,45 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         };
 
         try {
-            output.log('{gray-fg}Processing...{/gray-fg}');
-            screen.render();
+            // Determine spinner message based on input
+            let spinnerMsg = 'Processing';
+            if (trimmed.startsWith('/plan') || trimmed === '/p') spinnerMsg = 'Planning';
+            else if (trimmed.startsWith('/generate') || trimmed === '/g') spinnerMsg = 'Generating';
+            else if (trimmed.startsWith('/apply') || trimmed === '/a') spinnerMsg = 'Applying';
+            else if (trimmed.startsWith('/do ')) spinnerMsg = 'Executing';
+            else if (trimmed.startsWith('/run ')) spinnerMsg = 'Running';
+            else if (trimmed.startsWith('/ask') || trimmed.startsWith('/commit')) spinnerMsg = 'Thinking';
+            else if (!trimmed.startsWith('/')) spinnerMsg = 'Thinking';
+            
+            startSpinner(spinnerMsg);
             await orchestrate(value);
+            stopSpinner();
         } catch (e: any) {
-            output.log(`{red-fg}Error: ${e?.message || e}{/red-fg}`);
+            stopSpinner();
+            output.log(`{red-fg}✗ Error: ${e?.message || e}{/red-fg}`);
         }
 
         console.log = originalLog;
         console.error = originalError;
         console.warn = originalWarn;
         
+        // Update all UI elements
+        updateContextLine();
+        updateTips();
         updateStatusBar();
+        updateModeIndicator();
+        updatePlaceholder();
+        
+        // Rotate tip
+        currentTip = (currentTip + 1) % WELCOME_TIPS.length;
+        
+        output.log('');
         screen.render();
     }
 
     // Input events
     input.on('focus', () => {
+        updatePlaceholder();
         screen.render();
     });
 
@@ -408,14 +762,14 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     // Manual keypress handling for Palette interaction
     input.on('keypress', (ch, key) => {
         if (!key) {
+            updatePlaceholder();
             screen.render();
             return;
         }
 
         if (key.name === 'escape') {
-            if (showPalette) {
-                togglePalette(false);
-            }
+            if (showPalette) togglePalette(false);
+            if (showFileAutocomplete) toggleFileAutocomplete(false);
             screen.render();
             return;
         }
@@ -423,6 +777,11 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         if (key.name === 'down') {
             if (showPalette) {
                 palette.down(1);
+                screen.render();
+                return;
+            }
+            if (showFileAutocomplete) {
+                fileAutocomplete.down(1);
                 screen.render();
                 return;
             }
@@ -434,15 +793,63 @@ export async function startTUI(options: TUIOptions): Promise<void> {
                 screen.render();
                 return;
             }
+            if (showFileAutocomplete) {
+                fileAutocomplete.up(1);
+                screen.render();
+                return;
+            }
+            // Command history navigation
+            if (commandHistory.length > 0 && historyIndex < commandHistory.length - 1) {
+                historyIndex++;
+                input.setValue(commandHistory[historyIndex]);
+                updatePlaceholder();
+                screen.render();
+                return;
+            }
+        }
+
+        // Tab completion for files
+        if (key.name === 'tab') {
+            if (showFileAutocomplete && autocompleteFiles.length > 0) {
+                const selectedIndex = (fileAutocomplete as any).selected || 0;
+                const selectedFile = autocompleteFiles[selectedIndex];
+                if (selectedFile) {
+                    const currentVal = input.getValue();
+                    const parts = currentVal.split(' ');
+                    parts[parts.length - 1] = selectedFile;
+                    input.setValue(parts.join(' '));
+                    toggleFileAutocomplete(false);
+                    updatePlaceholder();
+                    screen.render();
+                }
+                return;
+            }
         }
 
         // Check input content on next tick to see if we should show palette
         setImmediate(() => {
             const val = input.getValue();
+            updatePlaceholder();
+            
             if (val && val.startsWith('/')) {
+                toggleFileAutocomplete(false);
                 togglePalette(true, val);
+                
+                // Check for file commands that need autocomplete
+                const fileCommands = ['/open ', '/read ', '/cat ', '/close '];
+                for (const cmd of fileCommands) {
+                    if (val.startsWith(cmd)) {
+                        const query = val.substring(cmd.length);
+                        if (query.length > 0) {
+                            togglePalette(false);
+                            toggleFileAutocomplete(true, query);
+                        }
+                        break;
+                    }
+                }
             } else {
                 if (showPalette) togglePalette(false);
+                if (showFileAutocomplete) toggleFileAutocomplete(false);
             }
             screen.render();
         });
@@ -455,27 +862,55 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         if (showPalette && inputValue.startsWith('/')) {
             const selectedIndex = (palette as any).selected || 0;
             const filter = inputValue.replace(/^\//, '').toLowerCase();
-            const filteredCommands = COMMANDS.filter(c => c.name.startsWith(filter));
+            const filteredCommands = COMMANDS.filter(c => 
+                c.name.startsWith(filter) || c.description.toLowerCase().includes(filter)
+            );
 
             if (filteredCommands[selectedIndex]) {
-                // Check if command needs arguments
                 const cmd = filteredCommands[selectedIndex];
-                const hasArgs = ['mode', 'model', 'open', 'file', 'exec'].includes(cmd.name);
+                const needsArgs = ['mode', 'model', 'open', 'read', 'cat', 'close', 'do', 'run', 'ask', 'fix', 'exec', 'search'].includes(cmd.name);
                 
-                if (hasArgs && !inputValue.includes(' ')) {
-                    // Command needs args - autocomplete and wait for user to type args
+                if (needsArgs && !inputValue.includes(' ')) {
                     input.setValue('/' + cmd.name + ' ');
                     togglePalette(false);
                     input.focus();
+                    updatePlaceholder();
                     screen.render();
                     return;
                 }
             }
         }
 
+        // Handle file autocomplete selection
+        if (showFileAutocomplete && autocompleteFiles.length > 0) {
+            const selectedIndex = (fileAutocomplete as any).selected || 0;
+            const selectedFile = autocompleteFiles[selectedIndex];
+            if (selectedFile) {
+                const currentVal = inputValue;
+                const parts = currentVal.split(' ');
+                parts[parts.length - 1] = selectedFile;
+                const newValue = parts.join(' ');
+                input.clearValue();
+                toggleFileAutocomplete(false);
+                togglePalette(false);
+                updatePlaceholder();
+                screen.render();
+                
+                if (newValue && newValue.trim()) {
+                    await processInput(newValue);
+                }
+                input.focus();
+                updatePlaceholder();
+                screen.render();
+                return;
+            }
+        }
+
         // Clear input and palette before processing
         input.clearValue();
         togglePalette(false);
+        toggleFileAutocomplete(false);
+        updatePlaceholder();
         screen.render();
         
         // Process the input
@@ -485,6 +920,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         
         // Refocus input for next command
         input.focus();
+        updatePlaceholder();
         screen.render();
     });
 
@@ -612,6 +1048,81 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     screen.key(['C-c'], () => {
         onExit?.();
         return process.exit(0);
+    });
+
+    // Quick action shortcuts
+    screen.key(['C-d'], async () => {
+        // Quick /do - need to prompt for task
+        input.setValue('/do ');
+        input.focus();
+        updatePlaceholder();
+        screen.render();
+    });
+
+    screen.key(['C-r'], async () => {
+        // Quick /run
+        input.setValue('/run ');
+        input.focus();
+        updatePlaceholder();
+        screen.render();
+    });
+
+    screen.key(['C-p'], async () => {
+        // Quick /plan
+        if (screen.focused === input && !input.getValue()) {
+            input.clearValue();
+            togglePalette(false);
+            updatePlaceholder();
+            screen.render();
+            await processInput('/plan');
+            input.focus();
+            updatePlaceholder();
+            screen.render();
+        }
+    });
+
+    screen.key(['C-g'], async () => {
+        // Quick /generate
+        if (screen.focused === input && !input.getValue()) {
+            input.clearValue();
+            togglePalette(false);
+            updatePlaceholder();
+            screen.render();
+            await processInput('/generate');
+            input.focus();
+            updatePlaceholder();
+            screen.render();
+        }
+    });
+
+    screen.key(['C-z'], async () => {
+        // Quick /undo
+        if (screen.focused === input && !input.getValue()) {
+            input.clearValue();
+            togglePalette(false);
+            updatePlaceholder();
+            screen.render();
+            await processInput('/undo');
+            input.focus();
+            updatePlaceholder();
+            screen.render();
+        }
+    });
+
+    screen.key(['C-a'], async () => {
+        // Quick /ask
+        input.setValue('/ask ');
+        input.focus();
+        updatePlaceholder();
+        screen.render();
+    });
+
+    screen.key(['C-f'], async () => {
+        // Quick /fix
+        input.setValue('/fix ');
+        input.focus();
+        updatePlaceholder();
+        screen.render();
     });
 
     screen.key(['q'], () => {

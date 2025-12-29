@@ -12,6 +12,13 @@ export declare function dim(msg: string): string;
 export declare function info(msg: string): string;
 export declare function hint(action: string): string;
 export declare function header(title: string): string;
+export declare function highlight(msg: string): string;
+export declare function code(msg: string): string;
+export declare function progressBar(current: number, total: number, width?: number): string;
+export declare function spinner(frame: number): string;
+export declare function fileOp(operation: string, filePath: string): string;
+export declare function diffLine(line: string): string;
+export declare function table(rows: string[][], headers?: string[]): string;
 export declare function box(content: string[], title?: string): string;
 export { ASCII_LOGO };
 //# sourceMappingURL=ui.d.ts.map

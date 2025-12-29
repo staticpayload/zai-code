@@ -26,6 +26,7 @@ npm-debug.log*
 
 # Local config
 .zai/
+.kiro/
 
 # Test
 coverage/

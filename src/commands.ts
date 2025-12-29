@@ -80,57 +80,128 @@ const handlers: Record<string, CommandHandler> = {
     const topic = ctx.args[0]?.toLowerCase();
     
     if (topic === 'modes') {
-      console.log('Modes:');
-      console.log('  auto    - YOLO mode: execute tasks directly without confirmation');
-      console.log('  edit    - Default: plan → generate → review → apply workflow');
-      console.log('  ask     - Read-only: answer questions, no file changes');
-      console.log('  explain - Read-only: explain code concepts');
-      console.log('  review  - Read-only: code review and analysis');
-      console.log('  debug   - Investigate and fix issues');
+      console.log('');
+      console.log(info('Available Modes:'));
+      console.log('');
+      console.log('  auto    ⚡ YOLO mode: execute tasks directly without confirmation');
+      console.log('  edit    ✏️  Default: plan → generate → review → apply workflow');
+      console.log('  ask     ❓ Read-only: answer questions, no file changes');
+      console.log('  explain 📖 Read-only: explain code concepts');
+      console.log('  review  👁  Read-only: code review and analysis');
+      console.log('  debug   🔧 Investigate and fix issues');
+      console.log('');
+      console.log(hint('/mode <name> to switch'));
       return;
     }
     
     if (topic === 'workflow') {
-      console.log('Workflow:');
+      console.log('');
+      console.log(info('Standard Workflow:'));
+      console.log('');
       console.log('  1. Type a task (e.g., "add error handling to auth.ts")');
       console.log('  2. /plan    - Generate execution plan');
       console.log('  3. /generate - Create file changes');
       console.log('  4. /diff    - Review changes');
       console.log('  5. /apply   - Apply changes');
       console.log('  6. /undo    - Rollback if needed');
+      console.log('');
+      console.log(info('Quick Workflow:'));
+      console.log('');
+      console.log('  /do <task>  - Plan + generate in one step');
+      console.log('  /run <task> - Plan + generate + apply (YOLO)');
+      console.log('');
       return;
     }
     
     if (topic === 'shortcuts') {
-      console.log('Shortcuts:');
-      console.log('  /do <task>  - Quick execute: plan + generate in one step');
-      console.log('  /run <task> - Auto mode: plan + generate + apply');
-      console.log('  /ask <q>    - Quick question without changing mode');
-      console.log('  /fix <desc> - Quick debug mode task');
+      console.log('');
+      console.log(info('Keyboard Shortcuts:'));
+      console.log('');
+      console.log('  Ctrl+D    /do <task>   - Quick execute');
+      console.log('  Ctrl+R    /run <task>  - Auto mode run');
+      console.log('  Ctrl+P    /plan        - Generate plan');
+      console.log('  Ctrl+G    /generate    - Create changes');
+      console.log('  Ctrl+Z    /undo        - Rollback');
+      console.log('  Ctrl+A    /ask <q>     - Quick question');
+      console.log('  Ctrl+F    /fix <desc>  - Quick debug');
+      console.log('  Ctrl+C    Exit');
+      console.log('');
+      console.log(info('Command Aliases:'));
+      console.log('');
+      console.log('  /h = /help    /p = /plan    /g = /generate');
+      console.log('  /d = /diff    /a = /apply   /u = /undo');
+      console.log('  /s = /status  /c = /context /f = /files');
+      console.log('');
+      return;
+    }
+
+    if (topic === 'quick') {
+      console.log('');
+      console.log(info('Quick Commands:'));
+      console.log('');
+      console.log('  /do <task>   Plan + generate in one step');
+      console.log('               Example: /do add input validation to login form');
+      console.log('');
+      console.log('  /run <task>  Plan + generate + apply automatically');
+      console.log('               Example: /run fix the typo in README.md');
+      console.log('');
+      console.log('  /ask <q>     Quick question without changing mode');
+      console.log('               Example: /ask what does this function do?');
+      console.log('');
+      console.log('  /fix <desc>  Quick debug mode task');
+      console.log('               Example: /fix login button not working');
+      console.log('');
+      console.log('  /commit      Generate AI commit message');
+      console.log('               Example: /commit (auto) or /commit feat: add login');
+      console.log('');
       return;
     }
     
-    console.log('Commands:');
+    // Default help
     console.log('');
-    console.log('Navigation:');
-    console.log('  /help [topic]  /context  /files  /open  /close  /workspace  /search');
+    console.log(info('zai·code Commands'));
     console.log('');
-    console.log('Execution:');
-    console.log('  /plan  /generate  /diff  /apply  /undo  /do  /run  /retry');
+    console.log(dim('Quick Actions:'));
+    console.log('  /do <task>     Plan + generate in one step');
+    console.log('  /run <task>    Plan + generate + apply (YOLO)');
+    console.log('  /ask <q>       Quick question');
+    console.log('  /fix <desc>    Quick debug task');
     console.log('');
-    console.log('Modes:');
-    console.log('  /mode  /ask  /model  /dry-run  /profile');
+    console.log(dim('Workflow:'));
+    console.log('  /plan          Generate execution plan');
+    console.log('  /generate      Create file changes');
+    console.log('  /diff [full]   Review pending changes');
+    console.log('  /apply [-f]    Apply changes');
+    console.log('  /undo [n]      Rollback operations');
+    console.log('  /retry         Retry last failed operation');
+    console.log('  /clear         Clear current task');
     console.log('');
-    console.log('Tasks:');
-    console.log('  /decompose  /step  /next  /skip  /progress  /clear');
+    console.log(dim('Files:'));
+    console.log('  /open <path>   Add file to context');
+    console.log('  /close <path>  Remove from context');
+    console.log('  /files         List open files');
+    console.log('  /search <q>    Search files');
+    console.log('  /read <path>   View file contents');
+    console.log('  /tree [depth]  Show file tree');
     console.log('');
-    console.log('System:');
-    console.log('  /settings  /git  /commit  /exec  /history  /doctor  /version');
+    console.log(dim('Modes & Settings:'));
+    console.log('  /mode [name]   Set mode (edit/ask/auto/debug/review/explain)');
+    console.log('  /model [id]    Select AI model');
+    console.log('  /settings      Open settings menu');
+    console.log('  /dry-run       Toggle dry-run mode');
     console.log('');
-    console.log('Session:');
-    console.log('  /reset  /save  /load  /exit');
+    console.log(dim('Git:'));
+    console.log('  /git [cmd]     Git operations (status/log/diff/stash/pop)');
+    console.log('  /commit [msg]  AI-powered commit');
     console.log('');
-    console.log(dim('Run /help <topic> for details: modes, workflow, shortcuts'));
+    console.log(dim('System:'));
+    console.log('  /status        Show session status');
+    console.log('  /doctor        System health check');
+    console.log('  /version       Show version');
+    console.log('  /reset         Reset session');
+    console.log('  /exit          Exit zcode');
+    console.log('');
+    console.log(hint('/help <topic> for details: modes, workflow, shortcuts, quick'));
   },
   
   // Quick execute - plan + generate in one step
@@ -491,23 +562,104 @@ const handlers: Record<string, CommandHandler> = {
     const gitInfo = getGitInfo(session.workingDirectory);
     const undoCount = getUndoCount();
     
-    console.log(`Mode: ${session.mode}${session.dryRun ? ' (dry-run)' : ''}`);
-    console.log(`Model: ${getModel()}`);
-    console.log(`Working dir: ${session.workingDirectory}`);
+    console.log('');
+    console.log(info('Session Status'));
     console.log('');
     
+    // Mode with icon
+    const modeIcons: Record<string, string> = {
+      'auto': '⚡', 'edit': '✏️', 'ask': '❓', 'debug': '🔧', 'review': '👁', 'explain': '📖'
+    };
+    const modeIcon = modeIcons[session.mode] || '';
+    console.log(`  Mode:      ${modeIcon} ${session.mode}${session.dryRun ? ' (dry-run)' : ''}`);
+    console.log(`  Model:     ${getModel()}`);
+    console.log(`  Directory: ${session.workingDirectory}`);
+    console.log('');
+    
+    // Git status
     if (gitInfo.isRepo) {
-      console.log(`Git: ${gitInfo.branch}${gitInfo.isDirty ? '*' : ''} (${gitInfo.uncommittedFiles} uncommitted)`);
+      const status = gitInfo.isDirty ? `${gitInfo.uncommittedFiles} uncommitted` : 'clean';
+      console.log(`  Git:       ${gitInfo.branch}${gitInfo.isDirty ? '*' : ''} (${status})`);
     } else {
-      console.log('Git: not a repository');
+      console.log('  Git:       not a repository');
     }
     console.log('');
     
-    console.log(`Open files: ${session.openFiles.length}`);
-    console.log(`Intent: ${session.currentIntent ? session.currentIntent.substring(0, 50) + '...' : 'none'}`);
-    console.log(`Plan: ${session.lastPlan ? `${session.lastPlan.length} steps` : 'none'}`);
-    console.log(`Pending: ${session.pendingActions ? 'yes' : 'no'}`);
-    console.log(`Undo stack: ${undoCount} operation(s)`);
+    // Session state
+    console.log(`  Files:     ${session.openFiles.length} in context`);
+    
+    // Current task
+    if (session.currentIntent) {
+      const truncated = session.currentIntent.length > 50 
+        ? session.currentIntent.substring(0, 50) + '...' 
+        : session.currentIntent;
+      console.log(`  Task:      ${truncated}`);
+    } else {
+      console.log(`  Task:      none`);
+    }
+    
+    // Plan status
+    if (session.lastPlan && session.lastPlan.length > 0) {
+      console.log(`  Plan:      ${session.lastPlan.length} step(s)`);
+    } else {
+      console.log(`  Plan:      none`);
+    }
+    
+    // Pending changes
+    if (session.pendingActions) {
+      const fileCount = (session.pendingActions.files?.length || 0);
+      const diffCount = (session.pendingActions.diffs?.length || 0);
+      console.log(`  Pending:   ${fileCount + diffCount} change(s)`);
+    } else {
+      console.log(`  Pending:   none`);
+    }
+    
+    console.log(`  Undo:      ${undoCount} operation(s) in stack`);
+    console.log('');
+    
+    // Suggestions based on state
+    if (session.pendingActions || session.lastDiff) {
+      console.log(hint('/diff to review, /apply to execute'));
+    } else if (session.lastPlan && session.lastPlan.length > 0) {
+      console.log(hint('/generate to create changes'));
+    } else if (session.currentIntent) {
+      console.log(hint('/plan to create execution plan'));
+    } else {
+      console.log(hint('Type a task to get started'));
+    }
+  },
+  
+  // YOLO mode shortcut
+  yolo: () => {
+    setMode('auto');
+    console.log(success('⚡ YOLO mode activated!'));
+    console.log(dim('Tasks will execute directly without confirmation.'));
+    console.log(hint('Type a task or use /run <task>'));
+  },
+  
+  // Quick mode switches
+  edit: () => {
+    setMode('edit');
+    console.log(success('Edit mode activated'));
+    console.log(hint('Type a task, then /plan → /generate → /diff → /apply'));
+  },
+  
+  debug: () => {
+    setMode('debug');
+    console.log(success('🔧 Debug mode activated'));
+    console.log(hint('Describe the bug or use /fix <description>'));
+  },
+  
+  review: () => {
+    setMode('review');
+    console.log(success('👁 Review mode activated'));
+    console.log(hint('Ask for code review or analysis'));
+  },
+  
+  explain: () => {
+    setMode('explain');
+    console.log(success('📖 Explain mode activated'));
+    console.log(hint('Ask about code concepts'));
   },
   reset: () => {
     resetSession();
@@ -1401,10 +1553,109 @@ const handlers: Record<string, CommandHandler> = {
       console.log(error(`Failed to create: ${e?.message}`));
     }
   },
+  
+  // What now - contextual suggestions
+  whatnow: () => {
+    const session = getSession();
+    const gitInfo = getGitInfo(session.workingDirectory);
+    
+    console.log('');
+    console.log(info('What to do next:'));
+    console.log('');
+    
+    // Based on current state
+    if (session.pendingActions || session.lastDiff) {
+      const count = (session.pendingActions?.files?.length || 0) + (session.pendingActions?.diffs?.length || 0);
+      console.log(`  You have ${count} pending change(s).`);
+      console.log('');
+      console.log('  /diff       Review the changes');
+      console.log('  /diff full  See full file contents');
+      console.log('  /apply      Apply the changes');
+      console.log('  /apply -f   Force apply (skip warnings)');
+      console.log('  /clear      Discard and start over');
+      console.log('');
+    } else if (session.lastPlan && session.lastPlan.length > 0) {
+      console.log(`  You have a plan with ${session.lastPlan.length} step(s).`);
+      console.log('');
+      console.log('  /generate   Create file changes from plan');
+      console.log('  /plan       Regenerate the plan');
+      console.log('  /clear      Discard and start over');
+      console.log('');
+    } else if (session.currentIntent) {
+      console.log(`  Task: "${session.currentIntent.substring(0, 50)}..."`);
+      console.log('');
+      console.log('  /plan       Create execution plan');
+      console.log('  /do         Plan + generate in one step');
+      console.log('  /run        Plan + generate + apply (YOLO)');
+      console.log('  /clear      Clear task and start over');
+      console.log('');
+    } else {
+      console.log('  No active task. Here are some ideas:');
+      console.log('');
+      console.log('  Type a task naturally:');
+      console.log('    "add error handling to auth.ts"');
+      console.log('    "create a new React component for user profile"');
+      console.log('    "fix the bug in the login function"');
+      console.log('');
+      console.log('  Or use quick commands:');
+      console.log('    /do <task>   Plan + generate');
+      console.log('    /run <task>  Full auto execution');
+      console.log('    /ask <q>     Ask a question');
+      console.log('    /fix <desc>  Debug an issue');
+      console.log('');
+    }
+    
+    // Git suggestions
+    if (gitInfo.isRepo && gitInfo.isDirty) {
+      console.log(dim(`  Git: ${gitInfo.uncommittedFiles} uncommitted file(s)`));
+      console.log('  /commit     Generate AI commit message');
+      console.log('  /git stash  Stash changes');
+      console.log('');
+    }
+    
+    // Mode suggestion
+    if (session.mode === 'edit') {
+      console.log(dim('  Tip: Use /yolo for autonomous execution'));
+    }
+  },
+  
+  // Alias for whatnow
+  whatsnext: () => {
+    handlers.whatnow({ args: [], rawInput: '/whatnow' });
+  },
+  
+  // Quick examples
+  examples: () => {
+    console.log('');
+    console.log(info('Example Tasks:'));
+    console.log('');
+    console.log(dim('Code Generation:'));
+    console.log('  "create a REST API endpoint for user registration"');
+    console.log('  "add a new React component for displaying user cards"');
+    console.log('  "implement a binary search function in TypeScript"');
+    console.log('');
+    console.log(dim('Bug Fixes:'));
+    console.log('  "fix the null pointer exception in auth.ts line 42"');
+    console.log('  "the login button doesn\'t work, fix it"');
+    console.log('  "users can\'t logout, investigate and fix"');
+    console.log('');
+    console.log(dim('Refactoring:'));
+    console.log('  "refactor the database module to use async/await"');
+    console.log('  "split the UserService into smaller modules"');
+    console.log('  "add TypeScript types to the utils folder"');
+    console.log('');
+    console.log(dim('Documentation:'));
+    console.log('  "add JSDoc comments to all exported functions"');
+    console.log('  "create a README for the project"');
+    console.log('  "document the API endpoints"');
+    console.log('');
+    console.log(hint('Just type naturally - zai·code understands context'));
+  },
 };
 
 // Command aliases for convenience
 const COMMAND_ALIASES: Record<string, string> = {
+  // Single letter shortcuts
   'h': 'help',
   '?': 'help',
   'q': 'exit',
@@ -1420,6 +1671,35 @@ const COMMAND_ALIASES: Record<string, string> = {
   'm': 'mode',
   'r': 'run',
   'x': 'exec',
+  'o': 'open',
+  't': 'tree',
+  'v': 'version',
+  
+  // Word aliases
+  'gen': 'generate',
+  'show': 'diff',
+  'view': 'read',
+  'cat': 'read',
+  'ls': 'tree',
+  'list': 'files',
+  'add': 'open',
+  'rm': 'close',
+  'remove': 'close',
+  'find': 'search',
+  'grep': 'search',
+  'auto': 'yolo',
+  'quick': 'do',
+  'execute': 'run',
+  'rollback': 'undo',
+  'revert': 'undo',
+  'info': 'status',
+  'state': 'status',
+  'check': 'doctor',
+  'health': 'doctor',
+  'cfg': 'settings',
+  'config': 'settings',
+  'prefs': 'settings',
+  'preferences': 'settings',
 };
 
 // Execute a parsed slash command
