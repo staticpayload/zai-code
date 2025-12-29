@@ -42,6 +42,7 @@ const auth_1 = require("./auth");
 const session_2 = require("./session");
 const path = __importStar(require("path"));
 const context_builder_1 = require("./context/context_builder");
+const agents_1 = require("./agents");
 // Planner configuration
 const MAX_PLAN_ITERATIONS = 5;
 exports.MAX_PLAN_ITERATIONS = MAX_PLAN_ITERATIONS;
@@ -101,8 +102,9 @@ async function runPlannerLoop() {
     // Bounded planning loop
     while (iterations < MAX_PLAN_ITERATIONS) {
         iterations++;
+        const agentsContext = (0, agents_1.getAgentsContext)(session.workingDirectory);
         const instruction = `Create a plan for the following task.
-
+${agentsContext}
 Task: ${intent}
 Intent Type: ${(0, session_1.getIntentType)() || 'COMMAND'}
 Mode: ${session.mode}
@@ -204,8 +206,9 @@ async function runGenerateLoop() {
     // Bounded generation loop
     while (iterations < MAX_REFINE_ITERATIONS) {
         iterations++;
+        const agentsContext = (0, agents_1.getAgentsContext)(session.workingDirectory);
         const instruction = `Execute the following plan and output file changes.
-
+${agentsContext}
 Task: ${intent}
 
 Plan:

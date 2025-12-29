@@ -40,6 +40,7 @@ const orchestrator_1 = require("./orchestrator");
 const git_1 = require("./git");
 const settings_1 = require("./settings");
 const profiles_1 = require("./profiles");
+const agents_1 = require("./agents");
 // Command definitions
 const COMMANDS = [
     { name: 'help', description: 'Show all commands' },
@@ -55,16 +56,16 @@ const COMMANDS = [
     { name: 'reset', description: 'Reset session' },
     { name: 'exit', description: 'Exit zcode' },
 ];
-// ASCII Logo - wide, typographic, blue-themed
+// ASCII Logo - ZAI CODE in matching block style, blue-themed
 const ASCII_LOGO = `
-{bold}{blue-fg}███████╗{/blue-fg}{cyan-fg} █████╗ {/cyan-fg}{blue-fg}██╗{/blue-fg}{/bold}
-{bold}{blue-fg}╚══███╔╝{/blue-fg}{cyan-fg}██╔══██╗{/cyan-fg}{blue-fg}██║{/blue-fg}{/bold}
-{bold}{blue-fg}  ███╔╝ {/blue-fg}{cyan-fg}███████║{/cyan-fg}{blue-fg}██║{/blue-fg}{/bold}
-{bold}{blue-fg} ███╔╝  {/blue-fg}{cyan-fg}██╔══██║{/cyan-fg}{blue-fg}██║{/blue-fg}{/bold}
-{bold}{blue-fg}███████╗{/blue-fg}{cyan-fg}██║  ██║{/cyan-fg}{blue-fg}██║{/blue-fg}{/bold}
-{bold}{blue-fg}╚══════╝{/blue-fg}{cyan-fg}╚═╝  ╚═╝{/cyan-fg}{blue-fg}╚═╝{/blue-fg}{/bold}  {bold}code{/bold}
+{bold}{blue-fg}███████╗{/blue-fg}{cyan-fg} █████╗ {/cyan-fg}{blue-fg}██╗{/blue-fg}    {cyan-fg} ██████╗ ██████╗ ██████╗ ███████╗{/cyan-fg}{/bold}
+{bold}{blue-fg}╚══███╔╝{/blue-fg}{cyan-fg}██╔══██╗{/cyan-fg}{blue-fg}██║{/blue-fg}    {cyan-fg}██╔════╝██╔═══██╗██╔══██╗██╔════╝{/cyan-fg}{/bold}
+{bold}{blue-fg}  ███╔╝ {/blue-fg}{cyan-fg}███████║{/cyan-fg}{blue-fg}██║{/blue-fg}    {cyan-fg}██║     ██║   ██║██║  ██║█████╗  {/cyan-fg}{/bold}
+{bold}{blue-fg} ███╔╝  {/blue-fg}{cyan-fg}██╔══██║{/cyan-fg}{blue-fg}██║{/blue-fg}    {cyan-fg}██║     ██║   ██║██║  ██║██╔══╝  {/cyan-fg}{/bold}
+{bold}{blue-fg}███████╗{/blue-fg}{cyan-fg}██║  ██║{/cyan-fg}{blue-fg}██║{/blue-fg}    {cyan-fg}╚██████╗╚██████╔╝██████╔╝███████╗{/cyan-fg}{/bold}
+{bold}{blue-fg}╚══════╝{/blue-fg}{cyan-fg}╚═╝  ╚═╝{/cyan-fg}{blue-fg}╚═╝{/blue-fg}    {cyan-fg} ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝{/cyan-fg}{/bold}
 `;
-const MINIMAL_LOGO = '{bold}{blue-fg}zai{/blue-fg}{cyan-fg}·{/cyan-fg}code{/bold}';
+const MINIMAL_LOGO = '{bold}{blue-fg}zai{/blue-fg} {cyan-fg}code{/cyan-fg}{/bold}';
 async function startTUI(options) {
     const { projectName, restored, onExit } = options;
     const session = (0, session_1.getSession)();
@@ -385,7 +386,11 @@ async function startTUI(options) {
     // Restored message
     if (restored) {
         output.log('{gray-fg}Session restored.{/gray-fg}');
-        screen.render();
     }
+    // agents.md notice
+    if ((0, agents_1.hasAgentsConfig)(session.workingDirectory)) {
+        output.log('{green-fg}agents.md detected and applied{/green-fg}');
+    }
+    screen.render();
 }
 //# sourceMappingURL=tui.js.map

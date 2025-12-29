@@ -6,6 +6,7 @@ import { getGitInfo } from './git';
 import { getModel, ZAI_MODELS, shouldShowLogo } from './settings';
 import { getActiveProfileName } from './profiles';
 import { getWorkspace } from './workspace_model';
+import { hasAgentsConfig } from './agents';
 import * as path from 'path';
 
 export interface TUIOptions {
@@ -30,17 +31,17 @@ const COMMANDS = [
     { name: 'exit', description: 'Exit zcode' },
 ];
 
-// ASCII Logo - wide, typographic, blue-themed
+// ASCII Logo - ZAI CODE in matching block style, blue-themed
 const ASCII_LOGO = `
-{bold}{blue-fg}███████╗{/blue-fg}{cyan-fg} █████╗ {/cyan-fg}{blue-fg}██╗{/blue-fg}{/bold}
-{bold}{blue-fg}╚══███╔╝{/blue-fg}{cyan-fg}██╔══██╗{/cyan-fg}{blue-fg}██║{/blue-fg}{/bold}
-{bold}{blue-fg}  ███╔╝ {/blue-fg}{cyan-fg}███████║{/cyan-fg}{blue-fg}██║{/blue-fg}{/bold}
-{bold}{blue-fg} ███╔╝  {/blue-fg}{cyan-fg}██╔══██║{/cyan-fg}{blue-fg}██║{/blue-fg}{/bold}
-{bold}{blue-fg}███████╗{/blue-fg}{cyan-fg}██║  ██║{/cyan-fg}{blue-fg}██║{/blue-fg}{/bold}
-{bold}{blue-fg}╚══════╝{/blue-fg}{cyan-fg}╚═╝  ╚═╝{/cyan-fg}{blue-fg}╚═╝{/blue-fg}{/bold}  {bold}code{/bold}
+{bold}{blue-fg}███████╗{/blue-fg}{cyan-fg} █████╗ {/cyan-fg}{blue-fg}██╗{/blue-fg}    {cyan-fg} ██████╗ ██████╗ ██████╗ ███████╗{/cyan-fg}{/bold}
+{bold}{blue-fg}╚══███╔╝{/blue-fg}{cyan-fg}██╔══██╗{/cyan-fg}{blue-fg}██║{/blue-fg}    {cyan-fg}██╔════╝██╔═══██╗██╔══██╗██╔════╝{/cyan-fg}{/bold}
+{bold}{blue-fg}  ███╔╝ {/blue-fg}{cyan-fg}███████║{/cyan-fg}{blue-fg}██║{/blue-fg}    {cyan-fg}██║     ██║   ██║██║  ██║█████╗  {/cyan-fg}{/bold}
+{bold}{blue-fg} ███╔╝  {/blue-fg}{cyan-fg}██╔══██║{/cyan-fg}{blue-fg}██║{/blue-fg}    {cyan-fg}██║     ██║   ██║██║  ██║██╔══╝  {/cyan-fg}{/bold}
+{bold}{blue-fg}███████╗{/blue-fg}{cyan-fg}██║  ██║{/cyan-fg}{blue-fg}██║{/blue-fg}    {cyan-fg}╚██████╗╚██████╔╝██████╔╝███████╗{/cyan-fg}{/bold}
+{bold}{blue-fg}╚══════╝{/blue-fg}{cyan-fg}╚═╝  ╚═╝{/cyan-fg}{blue-fg}╚═╝{/blue-fg}    {cyan-fg} ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝{/cyan-fg}{/bold}
 `;
 
-const MINIMAL_LOGO = '{bold}{blue-fg}zai{/blue-fg}{cyan-fg}·{/cyan-fg}code{/bold}';
+const MINIMAL_LOGO = '{bold}{blue-fg}zai{/blue-fg} {cyan-fg}code{/cyan-fg}{/bold}';
 
 export async function startTUI(options: TUIOptions): Promise<void> {
     const { projectName, restored, onExit } = options;
@@ -396,6 +397,12 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     // Restored message
     if (restored) {
         output.log('{gray-fg}Session restored.{/gray-fg}');
-        screen.render();
     }
+
+    // agents.md notice
+    if (hasAgentsConfig(session.workingDirectory)) {
+        output.log('{green-fg}agents.md detected and applied{/green-fg}');
+    }
+
+    screen.render();
 }
