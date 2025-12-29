@@ -208,7 +208,8 @@ interface HttpsPostResponse {
 
 function httpsPost(
   urlString: string,
-  options: HttpsPostOptions = {}
+  options: HttpsPostOptions = {},
+  timeout: number = REQUEST_TIMEOUT
 ): Promise<HttpsPostResponse> {
   return new Promise((resolve, reject) => {
     const parsedUrl = new URL(urlString);
@@ -217,6 +218,7 @@ function httpsPost(
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      'User-Agent': 'zai-code/1.0',
       ...options.headers,
     };
 
@@ -230,6 +232,7 @@ function httpsPost(
       path: parsedUrl.pathname + parsedUrl.search,
       method: options.method || 'POST',
       headers,
+      timeout,
     };
 
     const req = requestFn(requestOptions, (res) => {
@@ -250,7 +253,12 @@ function httpsPost(
     });
 
     req.on('error', (error) => {
-      reject(error);
+      reject(new Error(`Network error: ${error.message}`));
+    });
+
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error(`Request timeout after ${timeout}ms`));
     });
 
     if (options.body) {
@@ -298,50 +306,77 @@ interface ChatResponse {
 
 const DEFAULT_MODEL = 'glm-4.7';
 const DEFAULT_MAX_TOKENS = 4096;
+const REQUEST_TIMEOUT = 60000; // 60 seconds
 
 async function makeRequest(
   url: string,
   chatRequest: ChatRequest,
-  apiKey: string
+  apiKey: string,
+  retries: number = 2
 ): Promise<{ success: boolean; data?: ChatResponse; error?: string }> {
-  try {
-    const response = await httpsPost(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(chatRequest),
-    });
+  let lastError: string = '';
+  
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await httpsPost(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(chatRequest),
+      });
 
-    if (response.statusCode !== 200) {
-      let errorMessage = `HTTP ${response.statusCode}`;
-      try {
-        const errorBody = JSON.parse(response.body) as ChatResponse;
-        if (errorBody.error?.message) {
-          errorMessage = errorBody.error.message;
+      if (response.statusCode === 429) {
+        // Rate limited - wait and retry
+        const retryAfter = parseInt(response.headers['retry-after'] as string) || 5;
+        if (attempt < retries) {
+          await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+          continue;
         }
-      } catch {
-        if (response.body) {
-          errorMessage = response.body.substring(0, 500);
-        }
+        return { success: false, error: 'Rate limited. Please try again later.' };
       }
-      return { success: false, error: errorMessage };
+
+      if (response.statusCode >= 500 && attempt < retries) {
+        // Server error - retry
+        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        continue;
+      }
+
+      if (response.statusCode !== 200) {
+        let errorMessage = `HTTP ${response.statusCode}`;
+        try {
+          const errorBody = JSON.parse(response.body) as ChatResponse;
+          if (errorBody.error?.message) {
+            errorMessage = errorBody.error.message;
+          }
+        } catch {
+          if (response.body) {
+            errorMessage = response.body.substring(0, 500);
+          }
+        }
+        return { success: false, error: errorMessage };
+      }
+
+      const chatResponse = JSON.parse(response.body) as ChatResponse;
+
+      if (chatResponse.error) {
+        return { success: false, error: chatResponse.error.message };
+      }
+
+      return { success: true, data: chatResponse };
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+      
+      // Network errors - retry
+      if (attempt < retries) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        continue;
+      }
     }
-
-    const chatResponse = JSON.parse(response.body) as ChatResponse;
-
-    if (chatResponse.error) {
-      return { success: false, error: chatResponse.error.message };
-    }
-
-    return { success: true, data: chatResponse };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
   }
+  
+  return { success: false, error: lastError || 'Request failed after retries' };
 }
 
 function extractOutputText(chatResponse: ChatResponse): string {
@@ -356,6 +391,7 @@ export async function execute(
   apiKey: string
 ): Promise<ExecutionResponse> {
   const config = loadConfig();
+  // Z.ai (Zhipu AI) international coding API
   const baseUrl = (config.api as { baseUrl?: string })?.baseUrl || 'https://api.z.ai/api/coding/paas/v4/';
   const url = baseUrl.endsWith('/') ? `${baseUrl}chat/completions` : `${baseUrl}/chat/completions`;
 

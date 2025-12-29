@@ -1,5 +1,5 @@
 import { IntentType } from './session';
-export type WorkflowType = 'slash_command' | 'capture_intent' | 'ask_question' | 'append_context' | 'confirm_action' | 'ignore';
+export type WorkflowType = 'slash_command' | 'capture_intent' | 'ask_question' | 'append_context' | 'confirm_action' | 'auto_execute' | 'ignore';
 export interface OrchestrationResult {
     inputType: 'slash' | 'free_text';
     intent: IntentType;

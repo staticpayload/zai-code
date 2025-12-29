@@ -31,7 +31,7 @@ export interface Settings {
   firstRun: boolean;
 }
 
-// Z.ai model definitions
+// Z.ai model definitions (Anthropic-compatible API)
 export interface ModelDefinition {
   id: string;
   name: string;
@@ -39,9 +39,8 @@ export interface ModelDefinition {
 }
 
 export const ZAI_MODELS: ModelDefinition[] = [
-  { id: 'glm-4.7', name: 'GLM-4.7', description: 'Flagship, default' },
-  { id: 'glm-4.6', name: 'GLM-4.6', description: 'Advanced coding & reasoning' },
-  { id: 'glm-4.5', name: 'GLM-4.5', description: 'General purpose' },
+  { id: 'glm-4.7', name: 'GLM-4.7', description: 'Flagship model (Sonnet/Opus tier)' },
+  { id: 'glm-4.5-air', name: 'GLM-4.5-Air', description: 'Fast & efficient (Haiku tier)' },
 ];
 
 const DEFAULT_SETTINGS: Settings = {

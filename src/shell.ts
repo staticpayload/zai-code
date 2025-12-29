@@ -1,7 +1,15 @@
 import { execSync, ExecSyncOptions } from 'child_process';
 import { getSession } from './session';
 
-// Allowlist of permitted commands
+// Platform-specific command aliases
+const WINDOWS_ALIASES: Record<string, string> = {
+  'ls': 'dir',
+  'cat': 'type',
+  'pwd': 'cd',
+  'clear': 'cls',
+};
+
+// Allowlist of permitted commands (cross-platform)
 const ALLOWED_COMMANDS = new Set([
   'git',
   'npm',
@@ -17,6 +25,7 @@ const ALLOWED_COMMANDS = new Set([
   'go',
   'cargo',
   'make',
+  // Unix commands
   'ls',
   'cat',
   'head',
@@ -26,6 +35,11 @@ const ALLOWED_COMMANDS = new Set([
   'find',
   'pwd',
   'echo',
+  // Windows commands
+  'dir',
+  'type',
+  'where',
+  'findstr',
 ]);
 
 // Dangerous patterns that are never allowed
@@ -90,6 +104,23 @@ export function validateCommand(command: string): { valid: boolean; error?: stri
   return { valid: true };
 }
 
+// Translate Unix commands to Windows equivalents if needed
+function translateCommand(command: string): string {
+  if (process.platform !== 'win32') {
+    return command;
+  }
+
+  const parts = command.trim().split(/\s+/);
+  const baseCmd = parts[0];
+  
+  if (WINDOWS_ALIASES[baseCmd]) {
+    parts[0] = WINDOWS_ALIASES[baseCmd];
+    return parts.join(' ');
+  }
+  
+  return command;
+}
+
 // Execute a command safely
 export function executeCommand(command: string, cwd?: string): ExecResult {
   const validation = validateCommand(command);
@@ -107,6 +138,9 @@ export function executeCommand(command: string, cwd?: string): ExecResult {
 
   const session = getSession();
   const workingDir = cwd || session.workingDirectory;
+  
+  // Translate command for Windows if needed
+  const translatedCommand = translateCommand(command);
 
   const options: ExecSyncOptions = {
     cwd: workingDir,
@@ -114,10 +148,11 @@ export function executeCommand(command: string, cwd?: string): ExecResult {
     timeout: 30000, // 30 second timeout
     maxBuffer: 1024 * 1024 * 5, // 5MB buffer
     stdio: ['pipe', 'pipe', 'pipe'],
+    shell: process.platform === 'win32' ? 'cmd.exe' : '/bin/sh',
   };
 
   try {
-    const stdout = execSync(command, options) as string;
+    const stdout = execSync(translatedCommand, options) as string;
     return {
       success: true,
       command,
