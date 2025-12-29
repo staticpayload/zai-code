@@ -16,7 +16,7 @@ import {
   setDryRun,
   isDryRun,
 } from './session';
-import { loadSettings, setNestedSetting } from './settings';
+import { loadSettings, setNestedSetting, hasProjectSettings } from './settings';
 import { getGitInfo } from './git';
 import { listProfiles, applyProfile, getActiveProfileName } from './profiles';
 import { getHistory as getTaskHistory, getLastEntry, clearHistory, logTask, HistoryEntry } from './history';
@@ -94,6 +94,16 @@ const handlers: Record<string, CommandHandler> = {
     if (ctx.args.length === 0) {
       // Open interactive menu
       await openSettingsMenu();
+      return;
+    }
+
+    // Check for --project flag
+    if (ctx.args[0] === '--project') {
+      if (hasProjectSettings()) {
+        console.log('Project settings active: .zai/settings.json');
+      } else {
+        console.log('No project settings. Using global settings.');
+      }
       return;
     }
 

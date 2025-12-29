@@ -96,6 +96,16 @@ const handlers = {
             await (0, settings_menu_1.openSettingsMenu)();
             return;
         }
+        // Check for --project flag
+        if (ctx.args[0] === '--project') {
+            if ((0, settings_1.hasProjectSettings)()) {
+                console.log('Project settings active: .zai/settings.json');
+            }
+            else {
+                console.log('No project settings. Using global settings.');
+            }
+            return;
+        }
         // Quick set via command line
         const arg = ctx.args.join(' ');
         const match = arg.match(/^(\S+)\s*=\s*(\S+)$/);

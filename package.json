@@ -1,11 +1,15 @@
 {
-  "name": "zai-code",
-  "version": "0.0.1",
-  "description": "Z.ai Code CLI",
+  "name": "@staticpayload/zai-code",
+  "version": "1.0.0",
+  "description": "Z.ai-native AI code editor - CLI-first, interactive editor shell with keyboard-driven settings, plan-diff-apply workflow, and safety-first design",
   "main": "dist/cli.js",
   "bin": {
     "zcode": "./bin/zcode"
   },
+  "files": [
+    "bin/",
+    "dist/"
+  ],
   "engines": {
     "node": ">=18.0.0"
   },
@@ -15,8 +19,20 @@
   },
   "keywords": [
     "cli",
-    "zai"
+    "zai",
+    "code-editor",
+    "ai",
+    "interactive"
   ],
+  "author": "StaticPayload <chaitanyamishra.ai@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/staticpayload/zai-code.git"
+  },
+  "homepage": "https://github.com/staticpayload/zai-code",
+  "bugs": {
+    "url": "https://github.com/staticpayload/zai-code/issues"
+  },
   "license": "MIT",
   "devDependencies": {
     "@types/keytar": "^4.4.0",
