@@ -38,6 +38,9 @@ exports.executeCommand = executeCommand;
 exports.getAvailableCommands = getAvailableCommands;
 const session_1 = require("./session");
 const settings_1 = require("./settings");
+const git_1 = require("./git");
+const profiles_1 = require("./profiles");
+const history_1 = require("./history");
 const settings_menu_1 = require("./settings_menu");
 const shell_1 = require("./shell");
 const workspace_model_1 = require("./workspace_model");
@@ -69,31 +72,18 @@ function parseInput(input) {
 // Stub handlers for all commands
 const handlers = {
     help: () => {
-        console.log('Commands:');
-        console.log('  /help      - Show this help');
-        console.log('  /settings  - Configure UI settings');
-        console.log('  /mode      - Set mode (edit, explain, review, debug)');
-        console.log('  /reset     - Reset session state');
-        console.log('  /context   - Show current context');
-        console.log('  /files     - List open files');
-        console.log('  /open      - Add file to context');
-        console.log('  /plan      - Generate execution plan');
-        console.log('  /generate  - Generate file changes');
-        console.log('  /diff      - Review pending changes');
-        console.log('  /apply     - Apply pending changes');
-        console.log('  /undo      - Undo last file operation');
-        console.log('  /history   - Show undo history');
-        console.log('  /exec      - Execute shell command (allowlisted only)');
-        console.log('  /workspace - Show workspace info');
-        console.log('  /doctor    - Check system status');
-        console.log('  /exit      - Exit interactive mode');
-        console.log('');
-        console.log('Multi-step task commands:');
-        console.log('  /decompose - Break task into steps');
-        console.log('  /step      - Plan current step');
-        console.log('  /next      - Complete current step and advance');
-        console.log('  /skip      - Skip current step');
-        console.log('  /progress  - Show task progress');
+        console.log('Navigation:');
+        console.log('  /help /context /files /open /workspace');
+        console.log('Execution:');
+        console.log('  /plan /generate /diff /apply /undo');
+        console.log('Modes:');
+        console.log('  /mode /dry-run /profile');
+        console.log('Tasks:');
+        console.log('  /decompose /step /next /skip /progress');
+        console.log('System:');
+        console.log('  /settings /git /exec /history /doctor');
+        console.log('Session:');
+        console.log('  /reset /exit');
     },
     reset: () => {
         (0, session_1.resetSession)();
@@ -231,6 +221,17 @@ const handlers = {
     },
     apply: () => {
         const session = (0, session_1.getSession)();
+        // Check dry run mode
+        if (session.dryRun) {
+            console.log((0, ui_1.error)('Dry-run mode. Apply blocked.'));
+            console.log('Use /dry-run off to disable.');
+            return;
+        }
+        // Warn on dirty git
+        const gitInfo = (0, git_1.getGitInfo)(session.workingDirectory);
+        if (gitInfo.isRepo && gitInfo.isDirty) {
+            console.log((0, ui_1.info)('Warning: uncommitted changes exist.'));
+        }
         // Check if there are pending actions
         if (!session.pendingActions) {
             // Also check lastDiff as fallback
@@ -246,11 +247,6 @@ const handlers = {
         if ((!actions.files || actions.files.length === 0) &&
             (!actions.diffs || actions.diffs.length === 0)) {
             console.log('No file changes to apply.');
-            return;
-        }
-        // Check dry run mode
-        if (session.dryRun) {
-            console.log('Dry run mode. No changes applied.');
             return;
         }
         // Apply using the apply engine
@@ -423,7 +419,38 @@ const handlers = {
             console.log((0, ui_1.success)(`Undone: ${result.undone} operation(s)`));
         }
     },
-    history: () => {
+    history: (ctx) => {
+        const subcommand = ctx.args[0];
+        if (subcommand === 'clear') {
+            (0, history_1.clearHistory)();
+            console.log('History cleared.');
+            return;
+        }
+        if (subcommand === 'last') {
+            const last = (0, history_1.getLastEntry)();
+            if (!last) {
+                console.log('No history.');
+                return;
+            }
+            console.log(`${last.timestamp}`);
+            console.log(`  Intent: ${last.intent}`);
+            console.log(`  Type: ${last.intentType}`);
+            console.log(`  Outcome: ${last.outcome}`);
+            return;
+        }
+        const entries = (0, history_1.getHistory)(10);
+        if (entries.length === 0) {
+            console.log('No history.');
+            return;
+        }
+        console.log('Recent tasks:');
+        for (const e of entries) {
+            const ts = e.timestamp.split('T')[0];
+            const outcome = e.outcome === 'success' ? '+' : e.outcome === 'failed' ? 'x' : '-';
+            console.log(`  [${outcome}] ${ts} ${e.intent.substring(0, 40)}`);
+        }
+    },
+    'undo-history': () => {
         const entries = (0, rollback_1.getUndoHistory)();
         if (entries.length === 0) {
             console.log('No undo history.');
@@ -439,6 +466,67 @@ const handlers = {
         }
         if (entries.length > 10) {
             console.log(`  ... and ${entries.length - 10} more`);
+        }
+    },
+    profile: (ctx) => {
+        const subcommand = ctx.args[0];
+        if (!subcommand || subcommand === 'list') {
+            const profiles = (0, profiles_1.listProfiles)();
+            const active = (0, profiles_1.getActiveProfileName)();
+            console.log('Profiles:');
+            for (const p of profiles) {
+                const marker = p.name === active ? '*' : ' ';
+                console.log(`  ${marker} ${p.name} - ${p.description}`);
+            }
+            return;
+        }
+        if (subcommand === 'set') {
+            const name = ctx.args[1];
+            if (!name) {
+                console.log('Usage: /profile set <name>');
+                return;
+            }
+            if ((0, profiles_1.applyProfile)(name)) {
+                console.log((0, ui_1.success)(`Profile set: ${name}`));
+            }
+            else {
+                console.log((0, ui_1.error)(`Unknown profile: ${name}`));
+            }
+            return;
+        }
+        console.log('Usage: /profile [list | set <name>]');
+    },
+    'dry-run': (ctx) => {
+        const arg = ctx.args[0]?.toLowerCase();
+        if (!arg) {
+            const current = (0, session_1.isDryRun)();
+            console.log(`Dry-run: ${current ? 'on' : 'off'}`);
+            return;
+        }
+        if (arg === 'on') {
+            (0, session_1.setDryRun)(true);
+            console.log('Dry-run enabled. Apply will be blocked.');
+        }
+        else if (arg === 'off') {
+            (0, session_1.setDryRun)(false);
+            console.log('Dry-run disabled.');
+        }
+        else {
+            console.log('Usage: /dry-run [on | off]');
+        }
+    },
+    git: () => {
+        const session = (0, session_1.getSession)();
+        const info = (0, git_1.getGitInfo)(session.workingDirectory);
+        if (!info.isRepo) {
+            console.log('Not a git repository.');
+            return;
+        }
+        console.log(`Repository: ${info.repoName}`);
+        console.log(`Branch: ${info.branch}`);
+        console.log(`Status: ${info.isDirty ? 'dirty' : 'clean'}`);
+        if (info.uncommittedFiles > 0) {
+            console.log(`Uncommitted files: ${info.uncommittedFiles}`);
         }
     },
 };

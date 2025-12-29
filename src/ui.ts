@@ -1,5 +1,7 @@
 import { SessionState } from './session';
-import { shouldShowColor, shouldShowLogo } from './settings';
+import { shouldShowColor, shouldShowLogo, getModel } from './settings';
+import { getGitInfo, formatGitStatus } from './git';
+import { getActiveProfileName } from './profiles';
 
 // Colors - only if enabled
 function getColors() {
@@ -61,12 +63,16 @@ function getFocus(session: SessionState): string | null {
   return null;
 }
 
-// Build prompt: [mode][state][focus]>
+// Build prompt: [mode][dry-run?][state][focus]>
 export function getPrompt(session: SessionState): string {
   const state = getStateLabel(session);
   const focus = getFocus(session);
 
-  let prompt = `[${session.mode}][${state}]`;
+  let prompt = `[${session.mode}]`;
+  if (session.dryRun) {
+    prompt += '[dry-run]';
+  }
+  prompt += `[${state}]`;
   if (focus) {
     prompt += `[${focus}]`;
   }
@@ -80,6 +86,28 @@ export function renderStatus(session: SessionState): string {
   const c = getColors();
   const state = getStateLabel(session);
   return `${c.dim}Mode: ${session.mode} | State: ${state}${c.reset}`;
+}
+
+// Status bar: git | model | profile | pending
+export function renderStatusBar(session: SessionState): string {
+  const c = getColors();
+  const gitInfo = getGitInfo(session.workingDirectory);
+  const gitStatus = formatGitStatus(gitInfo);
+  const model = getModel().split('-').slice(0, 2).join('-'); // Shorten model name
+  const profile = getActiveProfileName();
+  const pending = session.pendingActions ? (session.pendingActions.files?.length || 0) + (session.pendingActions.diffs?.length || 0) : 0;
+
+  const parts = [
+    gitStatus,
+    `model:${model}`,
+    `profile:${profile}`,
+  ];
+
+  if (pending > 0) {
+    parts.push(`pending:${pending}`);
+  }
+
+  return c.dim + parts.join(' | ') + c.reset;
 }
 
 // Contextual warnings

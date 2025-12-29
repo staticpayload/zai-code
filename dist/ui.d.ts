@@ -3,6 +3,7 @@ declare const ASCII_LOGO = "\n _____ ___  ___\n|__  // _ |/  /\n  / // __ | __|\
 export declare function renderStartup(projectName: string): string;
 export declare function getPrompt(session: SessionState): string;
 export declare function renderStatus(session: SessionState): string;
+export declare function renderStatusBar(session: SessionState): string;
 export declare function getWarnings(session: SessionState): string[];
 export declare function success(msg: string): string;
 export declare function warning(msg: string): string;
