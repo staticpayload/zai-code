@@ -213,15 +213,15 @@ function httpsPost(urlString, options = {}) {
 }
 const DEFAULT_MODEL = 'glm-4.7';
 const DEFAULT_MAX_TOKENS = 4096;
-async function makeRequest(url, anthropicRequest, apiKey) {
+async function makeRequest(url, chatRequest, apiKey) {
     try {
         const response = await httpsPost(url, {
             method: 'POST',
             headers: {
-                'x-api-key': apiKey,
-                'anthropic-version': '2023-06-01',
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
             },
-            body: JSON.stringify(anthropicRequest),
+            body: JSON.stringify(chatRequest),
         });
         if (response.statusCode !== 200) {
             let errorMessage = `HTTP ${response.statusCode}`;
@@ -233,16 +233,16 @@ async function makeRequest(url, anthropicRequest, apiKey) {
             }
             catch {
                 if (response.body) {
-                    errorMessage = response.body;
+                    errorMessage = response.body.substring(0, 500);
                 }
             }
             return { success: false, error: errorMessage };
         }
-        const anthropicResponse = JSON.parse(response.body);
-        if (anthropicResponse.error) {
-            return { success: false, error: anthropicResponse.error.message };
+        const chatResponse = JSON.parse(response.body);
+        if (chatResponse.error) {
+            return { success: false, error: chatResponse.error.message };
         }
-        return { success: true, data: anthropicResponse };
+        return { success: true, data: chatResponse };
     }
     catch (error) {
         return {
@@ -251,19 +251,16 @@ async function makeRequest(url, anthropicRequest, apiKey) {
         };
     }
 }
-function extractOutputText(anthropicResponse) {
-    if (anthropicResponse.content && anthropicResponse.content.length > 0) {
-        const textBlock = anthropicResponse.content.find((block) => block.type === 'text');
-        if (textBlock) {
-            return textBlock.text;
-        }
+function extractOutputText(chatResponse) {
+    if (chatResponse.choices && chatResponse.choices.length > 0) {
+        return chatResponse.choices[0].message?.content || '';
     }
     return '';
 }
 async function execute(request, apiKey) {
     const config = (0, config_1.loadConfig)();
-    const baseUrl = config.api?.baseUrl || 'https://api.z.ai/api/paas/v4/';
-    const url = baseUrl.endsWith('/') ? `${baseUrl}messages` : `${baseUrl}/messages`;
+    const baseUrl = config.api?.baseUrl || 'https://open.bigmodel.cn/api/paas/v4/';
+    const url = baseUrl.endsWith('/') ? `${baseUrl}chat/completions` : `${baseUrl}/chat/completions`;
     const model = request.model || (0, settings_1.getModel)();
     const maxTokens = request.maxTokens || DEFAULT_MAX_TOKENS;
     const enforceSchema = request.enforceSchema !== false; // Default to true
@@ -281,13 +278,16 @@ async function execute(request, apiKey) {
         systemPrompt += '\n\n' + schemaInstruction;
     }
     async function attemptRequest(instruction, system) {
-        const anthropicRequest = {
+        // OpenAI format: system prompt as first message
+        const chatRequest = {
             model,
             max_tokens: maxTokens,
-            messages: [{ role: 'user', content: instruction }],
-            system,
+            messages: [
+                { role: 'system', content: system },
+                { role: 'user', content: instruction }
+            ],
         };
-        const result = await makeRequest(url, anthropicRequest, apiKey);
+        const result = await makeRequest(url, chatRequest, apiKey);
         if (!result.success || !result.data) {
             return { error: result.error };
         }
@@ -297,7 +297,12 @@ async function execute(request, apiKey) {
             parsedData = JSON.parse(outputText);
         }
         catch {
-            return { error: 'Failed to parse response as JSON' };
+            // Return raw text if not JSON
+            return {
+                parsedData: { status: 'success', output: outputText },
+                outputText,
+                usage: result.data.usage
+            };
         }
         return {
             parsedData,
@@ -321,8 +326,8 @@ async function execute(request, apiKey) {
             output: (initialResult.parsedData ?? initialResult.outputText ?? ''),
             usage: initialResult.usage
                 ? {
-                    inputTokens: initialResult.usage.input_tokens,
-                    outputTokens: initialResult.usage.output_tokens,
+                    inputTokens: initialResult.usage.prompt_tokens,
+                    outputTokens: initialResult.usage.completion_tokens,
                 }
                 : undefined,
         };
@@ -335,8 +340,8 @@ async function execute(request, apiKey) {
             output: (initialResult.parsedData ?? initialResult.outputText ?? ''),
             usage: initialResult.usage
                 ? {
-                    inputTokens: initialResult.usage.input_tokens,
-                    outputTokens: initialResult.usage.output_tokens,
+                    inputTokens: initialResult.usage.prompt_tokens,
+                    outputTokens: initialResult.usage.completion_tokens,
                 }
                 : undefined,
         };
@@ -358,8 +363,8 @@ async function execute(request, apiKey) {
             output: (retryResult.parsedData ?? retryResult.outputText ?? ''),
             usage: retryResult.usage
                 ? {
-                    inputTokens: retryResult.usage.input_tokens,
-                    outputTokens: retryResult.usage.output_tokens,
+                    inputTokens: retryResult.usage.prompt_tokens,
+                    outputTokens: retryResult.usage.completion_tokens,
                 }
                 : undefined,
         };
