@@ -351,9 +351,17 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         input.focus();
     });
 
-    input.key('/', () => {
-        if (input.getValue() === '') {
+    // CRITICAL: Intercept "/" at screen level to ALWAYS open command palette
+    screen.on('keypress', (ch: string, key: { name: string; ctrl?: boolean; shift?: boolean }) => {
+        // If palette is already open, let it handle keys
+        if (showPalette) {
+            return;
+        }
+
+        // "/" ALWAYS opens command palette
+        if (ch === '/') {
             togglePalette(true, '/');
+            return;
         }
     });
 
@@ -371,6 +379,14 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         togglePalette(false);
     });
 
+    palette.key(['up', 'down'], () => {
+        // Navigation handled by list widget
+    });
+
+    palette.key('enter', () => {
+        // Selection handled by 'select' event
+    });
+
     // Global key bindings
     screen.key(['escape'], () => {
         if (showPalette) {
@@ -379,12 +395,6 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     });
 
     screen.key(['C-c'], () => {
-        onExit?.();
-        return process.exit(0);
-    });
-
-    screen.key(['q'], () => {
-        // Only quit if 'q' is pressed outside input
         onExit?.();
         return process.exit(0);
     });
