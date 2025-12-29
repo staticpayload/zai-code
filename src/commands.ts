@@ -77,7 +77,7 @@ const handlers: Record<string, CommandHandler> = {
     console.log('Execution:');
     console.log('  /plan /generate /diff /apply /undo');
     console.log('Modes:');
-    console.log('  /mode /model /dry-run /profile');
+    console.log('  /ask /mode /model /dry-run /profile');
     console.log('Tasks:');
     console.log('  /decompose /step /next /skip /progress');
     console.log('System:');
@@ -157,23 +157,28 @@ const handlers: Record<string, CommandHandler> = {
   },
   mode: (ctx) => {
     const newMode = ctx.args[0]?.toLowerCase();
-    const validModes = ['edit', 'explain', 'review', 'debug'];
+    const validModes = ['edit', 'ask', 'explain', 'review', 'debug'];
 
     if (!newMode) {
       const session = getSession();
       console.log(`Current mode: ${session.mode}`);
-      console.log('Available modes: edit, explain, review, debug');
+      console.log('Available modes: edit, ask, explain, review, debug');
       return;
     }
 
     if (!validModes.includes(newMode)) {
       console.log(`Invalid mode: ${newMode}`);
-      console.log('Available modes: edit, explain, review, debug');
+      console.log('Available modes: edit, ask, explain, review, debug');
       return;
     }
 
     setMode(newMode as SessionMode);
     console.log(success(`Mode set to: ${newMode}`));
+  },
+  ask: () => {
+    setMode('ask');
+    console.log(success('Switched to ask mode (read-only, questions only)'));
+    console.log(hint('Type your question. Use /mode edit to switch back.'));
   },
   model: (ctx) => {
     const subcommand = ctx.args[0]?.toLowerCase();

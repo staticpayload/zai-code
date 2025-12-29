@@ -4,6 +4,9 @@ exports.orchestrate = orchestrate;
 const commands_1 = require("./commands");
 const session_1 = require("./session");
 const ui_1 = require("./ui");
+const runtime_1 = require("./runtime");
+const auth_1 = require("./auth");
+const agents_1 = require("./agents");
 // Intent classification (rule-based, no model)
 function classifyIntent(input) {
     const lower = input.toLowerCase().trim();
@@ -31,9 +34,39 @@ function classifyIntent(input) {
     }
     return 'COMMAND';
 }
-// Determine workflow
+// Determine workflow based on mode
 function determineWorkflow(intent, hasExistingIntent) {
+    const mode = (0, session_1.getMode)();
+    // In ask mode, treat all input as questions
+    if (mode === 'ask') {
+        return 'ask_question';
+    }
     return 'capture_intent';
+}
+// Handle question in ask mode (read-only, direct answer)
+async function handleAskQuestion(input) {
+    try {
+        const apiKey = await (0, auth_1.ensureAuthenticated)();
+        const session = (0, session_1.getSession)();
+        const agentsContext = (0, agents_1.getAgentsContext)(session.workingDirectory);
+        const instruction = `You are in READ-ONLY mode. Answer this question briefly and directly. 
+Do NOT suggest code changes. Do NOT plan modifications. Just explain.
+${agentsContext}
+Question: ${input}`;
+        const result = await (0, runtime_1.execute)({ instruction }, apiKey);
+        if (result.success && result.output) {
+            const response = result.output;
+            console.log(response.explanation || response.message || 'No answer available.');
+        }
+        else {
+            console.log((0, ui_1.error)(`Failed: ${result.error}`));
+        }
+        return { handled: true };
+    }
+    catch (e) {
+        console.log((0, ui_1.error)(`Error: ${e}`));
+        return { handled: true };
+    }
 }
 // Handle workflow
 async function handleWorkflow(workflow, input, parsed, intent) {
@@ -41,6 +74,8 @@ async function handleWorkflow(workflow, input, parsed, intent) {
         case 'slash_command':
             await (0, commands_1.executeCommand)(parsed);
             return { handled: true };
+        case 'ask_question':
+            return handleAskQuestion(input);
         case 'capture_intent':
             (0, session_1.setIntent)(input);
             (0, session_1.setIntentType)(intent);

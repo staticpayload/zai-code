@@ -1,11 +1,15 @@
 import { parseInput, executeCommand, ParsedCommand } from './commands';
-import { getSession, setIntent, getIntent, IntentType, setIntentType } from './session';
-import { hint, dim } from './ui';
+import { getSession, setIntent, getIntent, IntentType, setIntentType, getMode } from './session';
+import { hint, dim, error } from './ui';
+import { execute } from './runtime';
+import { ensureAuthenticated } from './auth';
+import { getAgentsContext } from './agents';
 
 // Workflow types
 export type WorkflowType =
   | 'slash_command'
   | 'capture_intent'
+  | 'ask_question'
   | 'append_context'
   | 'confirm_action'
   | 'ignore';
@@ -52,9 +56,44 @@ function classifyIntent(input: string): IntentType {
   return 'COMMAND';
 }
 
-// Determine workflow
+// Determine workflow based on mode
 function determineWorkflow(intent: IntentType, hasExistingIntent: boolean): WorkflowType {
+  const mode = getMode();
+
+  // In ask mode, treat all input as questions
+  if (mode === 'ask') {
+    return 'ask_question';
+  }
+
   return 'capture_intent';
+}
+
+// Handle question in ask mode (read-only, direct answer)
+async function handleAskQuestion(input: string): Promise<{ handled: boolean; message?: string }> {
+  try {
+    const apiKey = await ensureAuthenticated();
+    const session = getSession();
+    const agentsContext = getAgentsContext(session.workingDirectory);
+
+    const instruction = `You are in READ-ONLY mode. Answer this question briefly and directly. 
+Do NOT suggest code changes. Do NOT plan modifications. Just explain.
+${agentsContext}
+Question: ${input}`;
+
+    const result = await execute({ instruction }, apiKey);
+
+    if (result.success && result.output) {
+      const response = result.output as { explanation?: string; message?: string };
+      console.log(response.explanation || response.message || 'No answer available.');
+    } else {
+      console.log(error(`Failed: ${result.error}`));
+    }
+
+    return { handled: true };
+  } catch (e) {
+    console.log(error(`Error: ${e}`));
+    return { handled: true };
+  }
 }
 
 // Handle workflow
@@ -68,6 +107,9 @@ async function handleWorkflow(
     case 'slash_command':
       await executeCommand(parsed);
       return { handled: true };
+
+    case 'ask_question':
+      return handleAskQuestion(input);
 
     case 'capture_intent':
       setIntent(input);
