@@ -351,17 +351,18 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         input.focus();
     });
 
-    // CRITICAL: Intercept "/" at screen level to ALWAYS open command palette
-    screen.on('keypress', (ch: string, key: { name: string; ctrl?: boolean; shift?: boolean }) => {
-        // If palette is already open, let it handle keys
+    // CRITICAL: Intercept "/" at INPUT level - fires BEFORE text is added
+    input.on('keypress', (ch: string) => {
+        // If palette is already open, ignore
         if (showPalette) {
             return;
         }
 
-        // "/" ALWAYS opens command palette
-        if (ch === '/') {
+        // "/" ALWAYS opens command palette (when input is empty or first char)
+        if (ch === '/' && (!input.getValue() || input.getValue() === '')) {
+            // Clear any "/" that might have been typed
+            input.clearValue();
             togglePalette(true, '/');
-            return;
         }
     });
 
