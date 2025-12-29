@@ -6,7 +6,7 @@ const session_1 = require("./session");
 const ui_1 = require("./ui");
 const runtime_1 = require("./runtime");
 const auth_1 = require("./auth");
-const agents_1 = require("./agents");
+const mode_prompts_1 = require("./mode_prompts");
 // Intent classification (rule-based, no model)
 function classifyIntent(input) {
     const lower = input.toLowerCase().trim();
@@ -37,26 +37,43 @@ function classifyIntent(input) {
 // Determine workflow based on mode
 function determineWorkflow(intent, hasExistingIntent) {
     const mode = (0, session_1.getMode)();
-    // In ask mode, treat all input as questions
-    if (mode === 'ask') {
+    // Read-only modes route to ask_question workflow
+    if (mode === 'ask' || mode === 'explain' || mode === 'review') {
         return 'ask_question';
     }
     return 'capture_intent';
 }
-// Handle question in ask mode (read-only, direct answer)
+// Handle question/explain/review in read-only modes
 async function handleAskQuestion(input) {
     try {
         const apiKey = await (0, auth_1.ensureAuthenticated)();
         const session = (0, session_1.getSession)();
-        const agentsContext = (0, agents_1.getAgentsContext)(session.workingDirectory);
-        const instruction = `You are in READ-ONLY mode. Answer this question briefly and directly. 
-Do NOT suggest code changes. Do NOT plan modifications. Just explain.
-${agentsContext}
-Question: ${input}`;
+        const mode = (0, session_1.getMode)();
+        const modePrompt = (0, mode_prompts_1.buildSystemPrompt)(mode, session.workingDirectory);
+        const instruction = `${modePrompt}
+
+User input: ${input}`;
         const result = await (0, runtime_1.execute)({ instruction }, apiKey);
         if (result.success && result.output) {
             const response = result.output;
-            console.log(response.explanation || response.message || 'No answer available.');
+            // Handle different response formats based on mode
+            if (response.explanation) {
+                console.log(response.explanation);
+            }
+            else if (response.summary) {
+                console.log(response.summary);
+                if (response.issues && Array.isArray(response.issues)) {
+                    for (const issue of response.issues) {
+                        console.log(`  [${issue.severity || 'note'}] ${issue.description || ''}`);
+                    }
+                }
+            }
+            else if (response.message) {
+                console.log(response.message);
+            }
+            else {
+                console.log(JSON.stringify(response, null, 2));
+            }
         }
         else {
             console.log((0, ui_1.error)(`Failed: ${result.error}`));

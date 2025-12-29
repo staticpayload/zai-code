@@ -3,7 +3,7 @@ import { getSession, setIntent, getIntent, IntentType, setIntentType, getMode } 
 import { hint, dim, error } from './ui';
 import { execute } from './runtime';
 import { ensureAuthenticated } from './auth';
-import { getAgentsContext } from './agents';
+import { buildSystemPrompt } from './mode_prompts';
 
 // Workflow types
 export type WorkflowType =
@@ -60,31 +60,46 @@ function classifyIntent(input: string): IntentType {
 function determineWorkflow(intent: IntentType, hasExistingIntent: boolean): WorkflowType {
   const mode = getMode();
 
-  // In ask mode, treat all input as questions
-  if (mode === 'ask') {
+  // Read-only modes route to ask_question workflow
+  if (mode === 'ask' || mode === 'explain' || mode === 'review') {
     return 'ask_question';
   }
 
   return 'capture_intent';
 }
 
-// Handle question in ask mode (read-only, direct answer)
+// Handle question/explain/review in read-only modes
 async function handleAskQuestion(input: string): Promise<{ handled: boolean; message?: string }> {
   try {
     const apiKey = await ensureAuthenticated();
     const session = getSession();
-    const agentsContext = getAgentsContext(session.workingDirectory);
+    const mode = getMode();
+    const modePrompt = buildSystemPrompt(mode, session.workingDirectory);
 
-    const instruction = `You are in READ-ONLY mode. Answer this question briefly and directly. 
-Do NOT suggest code changes. Do NOT plan modifications. Just explain.
-${agentsContext}
-Question: ${input}`;
+    const instruction = `${modePrompt}
+
+User input: ${input}`;
 
     const result = await execute({ instruction }, apiKey);
 
     if (result.success && result.output) {
-      const response = result.output as { explanation?: string; message?: string };
-      console.log(response.explanation || response.message || 'No answer available.');
+      const response = result.output as { explanation?: string; message?: string; summary?: string; issues?: unknown[] };
+
+      // Handle different response formats based on mode
+      if (response.explanation) {
+        console.log(response.explanation);
+      } else if (response.summary) {
+        console.log(response.summary);
+        if (response.issues && Array.isArray(response.issues)) {
+          for (const issue of response.issues as Array<{ severity?: string; description?: string }>) {
+            console.log(`  [${issue.severity || 'note'}] ${issue.description || ''}`);
+          }
+        }
+      } else if (response.message) {
+        console.log(response.message);
+      } else {
+        console.log(JSON.stringify(response, null, 2));
+      }
     } else {
       console.log(error(`Failed: ${result.error}`));
     }
