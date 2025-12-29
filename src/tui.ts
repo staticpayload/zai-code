@@ -121,29 +121,53 @@ function getPlaceholder(): string {
 const commandHistory: string[] = [];
 let historyIndex = -1;
 
-// ASCII Logo - cleaner, more modern
-const ASCII_LOGO = `
-{bold}{cyan-fg}╭─────────────────────────────────────╮{/cyan-fg}{/bold}
-{bold}{cyan-fg}│{/cyan-fg}  {blue-fg}███████{/blue-fg} {cyan-fg}█████{/cyan-fg}  {blue-fg}██{/blue-fg}    {cyan-fg}code{/cyan-fg}       {cyan-fg}│{/cyan-fg}{/bold}
-{bold}{cyan-fg}│{/cyan-fg}     {blue-fg}███{/blue-fg}  {cyan-fg}██{/cyan-fg}  {cyan-fg}██{/cyan-fg} {blue-fg}██{/blue-fg}    {gray-fg}v1.3.0{/gray-fg}     {cyan-fg}│{/cyan-fg}{/bold}
-{bold}{cyan-fg}│{/cyan-fg}    {blue-fg}███{/blue-fg}   {cyan-fg}█████{/cyan-fg}  {blue-fg}██{/blue-fg}               {cyan-fg}│{/cyan-fg}{/bold}
-{bold}{cyan-fg}│{/cyan-fg}   {blue-fg}███{/blue-fg}    {cyan-fg}██{/cyan-fg}  {cyan-fg}██{/cyan-fg} {blue-fg}██{/blue-fg}    {gray-fg}AI-native{/gray-fg}  {cyan-fg}│{/cyan-fg}{/bold}
-{bold}{cyan-fg}│{/cyan-fg}  {blue-fg}███████{/blue-fg} {cyan-fg}██{/cyan-fg}  {cyan-fg}██{/cyan-fg} {blue-fg}██{/blue-fg}    {gray-fg}code editor{/gray-fg}{cyan-fg}│{/cyan-fg}{/bold}
-{bold}{cyan-fg}╰─────────────────────────────────────╯{/cyan-fg}{/bold}
-`;
+// Animated Robot Mascot Frames
+const MASCOT_FRAMES = [
+    // Frame 1 - looking right
+    `{cyan-fg}   ╭───╮   {/cyan-fg}
+{cyan-fg}   │{/cyan-fg}{bold}{white-fg}◉ ◉{/white-fg}{/bold}{cyan-fg}│   {/cyan-fg}
+{cyan-fg}   │{/cyan-fg}{yellow-fg} ▽ {/yellow-fg}{cyan-fg}│   {/cyan-fg}
+{cyan-fg}  ╭┴───┴╮  {/cyan-fg}
+{cyan-fg}  │ {/cyan-fg}{blue-fg}ZAI{/blue-fg}{cyan-fg} │  {/cyan-fg}
+{cyan-fg}  ╰┬───┬╯  {/cyan-fg}`,
+    // Frame 2 - looking left
+    `{cyan-fg}   ╭───╮   {/cyan-fg}
+{cyan-fg}   │{/cyan-fg}{bold}{white-fg}◉ ◉{/white-fg}{/bold}{cyan-fg}│   {/cyan-fg}
+{cyan-fg}   │{/cyan-fg}{yellow-fg} ◡ {/yellow-fg}{cyan-fg}│   {/cyan-fg}
+{cyan-fg}  ╭┴───┴╮  {/cyan-fg}
+{cyan-fg}  │ {/cyan-fg}{blue-fg}ZAI{/blue-fg}{cyan-fg} │  {/cyan-fg}
+{cyan-fg}  ╰┬───┬╯  {/cyan-fg}`,
+    // Frame 3 - blinking
+    `{cyan-fg}   ╭───╮   {/cyan-fg}
+{cyan-fg}   │{/cyan-fg}{bold}{white-fg}─ ─{/white-fg}{/bold}{cyan-fg}│   {/cyan-fg}
+{cyan-fg}   │{/cyan-fg}{yellow-fg} ◡ {/yellow-fg}{cyan-fg}│   {/cyan-fg}
+{cyan-fg}  ╭┴───┴╮  {/cyan-fg}
+{cyan-fg}  │ {/cyan-fg}{blue-fg}ZAI{/blue-fg}{cyan-fg} │  {/cyan-fg}
+{cyan-fg}  ╰┬───┬╯  {/cyan-fg}`,
+    // Frame 4 - happy
+    `{cyan-fg}   ╭───╮   {/cyan-fg}
+{cyan-fg}   │{/cyan-fg}{bold}{white-fg}◠ ◠{/white-fg}{/bold}{cyan-fg}│   {/cyan-fg}
+{cyan-fg}   │{/cyan-fg}{yellow-fg} ◡ {/yellow-fg}{cyan-fg}│   {/cyan-fg}
+{cyan-fg}  ╭┴───┴╮  {/cyan-fg}
+{cyan-fg}  │ {/cyan-fg}{blue-fg}ZAI{/blue-fg}{cyan-fg} │  {/cyan-fg}
+{cyan-fg}  ╰┬───┬╯  {/cyan-fg}`,
+];
 
-const MINIMAL_LOGO = '{bold}{blue-fg}⚡{/blue-fg} {cyan-fg}zai·code{/cyan-fg}{/bold}  {gray-fg}AI-native code editor{/gray-fg}';
+// Compact header with mascot
+const HEADER_WITH_MASCOT = `{bold}{cyan-fg}zai{/cyan-fg}{blue-fg}·{/blue-fg}{cyan-fg}code{/cyan-fg}{/bold} {gray-fg}v1.4.0{/gray-fg}`;
+
+const MINIMAL_LOGO = '{bold}{cyan-fg}⚡ zai·code{/cyan-fg}{/bold} {gray-fg}AI-native editor{/gray-fg}';
 
 // Welcome tips - rotate through these
 const WELCOME_TIPS = [
     'Type a task naturally, like "add error handling to auth.ts"',
     'Use /do <task> for quick plan+generate in one step',
     'Use /run <task> for full auto execution (YOLO mode)',
-    'Press Ctrl+P to quickly plan, Ctrl+G to generate',
     'Use /ask for quick questions without changing mode',
     'Try /fix <problem> to quickly debug issues',
     '/commit generates AI-powered commit messages',
     'Use /mode auto for autonomous execution',
+    'Use ↑↓ to navigate commands, Tab to complete',
 ];
 
 export async function startTUI(options: TUIOptions): Promise<void> {
@@ -185,29 +209,75 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     let spinnerFrame = 0;
     let isProcessing = false;
     let currentTip = Math.floor(Math.random() * WELCOME_TIPS.length);
+    let mascotFrame = 0;
+    let mascotInterval: NodeJS.Timeout | null = null;
 
-    // Header with logo
+    // Header with animated mascot
     const header = blessed.box({
         top: 0,
         left: 0,
         width: '100%',
-        height: shouldShowLogo() ? 9 : 2,
+        height: shouldShowLogo() ? 8 : 2,
         tags: true,
-        content: shouldShowLogo() ? ASCII_LOGO : MINIMAL_LOGO,
         style: {
             fg: theme.fg,
             bg: theme.bg,
         },
     });
 
+    // Update header with mascot animation
+    function updateHeader() {
+        if (shouldShowLogo()) {
+            const mascot = MASCOT_FRAMES[mascotFrame];
+            const title = `{bold}{cyan-fg}zai{/cyan-fg}{blue-fg}·{/blue-fg}{cyan-fg}code{/cyan-fg}{/bold} {gray-fg}v1.4.0{/gray-fg}`;
+            const subtitle = '{gray-fg}AI-native code editor{/gray-fg}';
+            
+            // Combine mascot with title
+            const mascotLines = mascot.split('\n');
+            const content = mascotLines.map((line, i) => {
+                if (i === 1) return line + '  ' + title;
+                if (i === 2) return line + '  ' + subtitle;
+                return line;
+            }).join('\n');
+            
+            header.setContent(content);
+        } else {
+            header.setContent(MINIMAL_LOGO);
+        }
+    }
+
+    // Start mascot animation
+    function startMascotAnimation() {
+        if (mascotInterval) return;
+        mascotInterval = setInterval(() => {
+            mascotFrame = (mascotFrame + 1) % MASCOT_FRAMES.length;
+            updateHeader();
+            screen.render();
+        }, 2000); // Change every 2 seconds
+    }
+
+    // Stop mascot animation
+    function stopMascotAnimation() {
+        if (mascotInterval) {
+            clearInterval(mascotInterval);
+            mascotInterval = null;
+        }
+    }
+
+    // Initialize header
+    updateHeader();
+    if (shouldShowLogo()) {
+        startMascotAnimation();
+    }
+
     // Quick actions bar - keyboard shortcuts
     const quickActions = blessed.box({
-        top: shouldShowLogo() ? 9 : 2,
+        top: shouldShowLogo() ? 8 : 2,
         left: 0,
         width: '100%',
         height: 1,
         tags: true,
-        content: '{gray-fg}Quick:{/gray-fg} {cyan-fg}^D{/cyan-fg}do {cyan-fg}^R{/cyan-fg}run {cyan-fg}^P{/cyan-fg}plan {cyan-fg}^G{/cyan-fg}gen {cyan-fg}^Z{/cyan-fg}undo',
+        content: '{gray-fg}↑↓{/gray-fg} navigate  {gray-fg}Tab{/gray-fg} complete  {gray-fg}Enter{/gray-fg} select  {gray-fg}Esc{/gray-fg} close',
         style: {
             fg: theme.fg,
             bg: theme.bg,
@@ -216,7 +286,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     });
 
     // Context/status line
-    const contextTop = shouldShowLogo() ? 10 : 3;
+    const contextTop = shouldShowLogo() ? 9 : 3;
     const contextLine = blessed.box({
         top: contextTop,
         left: 0,
@@ -759,7 +829,97 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         screen.render();
     });
 
-    // Manual keypress handling for Palette interaction
+    // Track palette selection index manually
+    let paletteSelectedIndex = 0;
+    let fileSelectedIndex = 0;
+
+    // Screen-level key handling for arrow keys (works better than input keypress)
+    screen.key(['up'], () => {
+        if (showPalette) {
+            paletteSelectedIndex = Math.max(0, paletteSelectedIndex - 1);
+            palette.select(paletteSelectedIndex);
+            screen.render();
+            return;
+        }
+        if (showFileAutocomplete) {
+            fileSelectedIndex = Math.max(0, fileSelectedIndex - 1);
+            fileAutocomplete.select(fileSelectedIndex);
+            screen.render();
+            return;
+        }
+        // Command history navigation
+        if (commandHistory.length > 0 && historyIndex < commandHistory.length - 1) {
+            historyIndex++;
+            input.setValue(commandHistory[historyIndex]);
+            updatePlaceholder();
+            screen.render();
+        }
+    });
+
+    screen.key(['down'], () => {
+        if (showPalette) {
+            const maxIndex = Math.min(COMMANDS.length - 1, 9);
+            paletteSelectedIndex = Math.min(maxIndex, paletteSelectedIndex + 1);
+            palette.select(paletteSelectedIndex);
+            screen.render();
+            return;
+        }
+        if (showFileAutocomplete) {
+            const maxIndex = Math.min(autocompleteFiles.length - 1, 9);
+            fileSelectedIndex = Math.min(maxIndex, fileSelectedIndex + 1);
+            fileAutocomplete.select(fileSelectedIndex);
+            screen.render();
+            return;
+        }
+        // Command history navigation (go back to newer)
+        if (historyIndex > 0) {
+            historyIndex--;
+            input.setValue(commandHistory[historyIndex]);
+            updatePlaceholder();
+            screen.render();
+        } else if (historyIndex === 0) {
+            historyIndex = -1;
+            input.setValue('');
+            updatePlaceholder();
+            screen.render();
+        }
+    });
+
+    // Tab completion
+    screen.key(['tab'], () => {
+        if (showPalette) {
+            const filter = (input.getValue() || '').replace(/^\//, '').toLowerCase();
+            const filtered = COMMANDS.filter(c => 
+                c.name.startsWith(filter) || c.description.toLowerCase().includes(filter)
+            );
+            if (filtered[paletteSelectedIndex]) {
+                const cmd = filtered[paletteSelectedIndex];
+                input.setValue('/' + cmd.name + ' ');
+                togglePalette(false);
+                paletteSelectedIndex = 0;
+                updatePlaceholder();
+                input.focus();
+                screen.render();
+            }
+            return;
+        }
+        if (showFileAutocomplete && autocompleteFiles.length > 0) {
+            const selectedFile = autocompleteFiles[fileSelectedIndex];
+            if (selectedFile) {
+                const currentVal = input.getValue() || '';
+                const parts = currentVal.split(' ');
+                parts[parts.length - 1] = selectedFile;
+                input.setValue(parts.join(' '));
+                toggleFileAutocomplete(false);
+                fileSelectedIndex = 0;
+                updatePlaceholder();
+                input.focus();
+                screen.render();
+            }
+        }
+    });
+
+    // Manual keypress handling for other keys
     input.on('keypress', (ch, key) => {
         if (!key) {
             updatePlaceholder();
@@ -768,62 +928,16 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         }
 
         if (key.name === 'escape') {
-            if (showPalette) togglePalette(false);
-            if (showFileAutocomplete) toggleFileAutocomplete(false);
+            if (showPalette) {
+                togglePalette(false);
+                paletteSelectedIndex = 0;
+            }
+            if (showFileAutocomplete) {
+                toggleFileAutocomplete(false);
+                fileSelectedIndex = 0;
+            }
             screen.render();
             return;
-        }
-
-        if (key.name === 'down') {
-            if (showPalette) {
-                palette.down(1);
-                screen.render();
-                return;
-            }
-            if (showFileAutocomplete) {
-                fileAutocomplete.down(1);
-                screen.render();
-                return;
-            }
-        }
-
-        if (key.name === 'up') {
-            if (showPalette) {
-                palette.up(1);
-                screen.render();
-                return;
-            }
-            if (showFileAutocomplete) {
-                fileAutocomplete.up(1);
-                screen.render();
-                return;
-            }
-            // Command history navigation
-            if (commandHistory.length > 0 && historyIndex < commandHistory.length - 1) {
-                historyIndex++;
-                input.setValue(commandHistory[historyIndex]);
-                updatePlaceholder();
-                screen.render();
-                return;
-            }
-        }
-
-        // Tab completion for files
-        if (key.name === 'tab') {
-            if (showFileAutocomplete && autocompleteFiles.length > 0) {
-                const selectedIndex = (fileAutocomplete as any).selected || 0;
-                const selectedFile = autocompleteFiles[selectedIndex];
-                if (selectedFile) {
-                    const currentVal = input.getValue();
-                    const parts = currentVal.split(' ');
-                    parts[parts.length - 1] = selectedFile;
-                    input.setValue(parts.join(' '));
-                    toggleFileAutocomplete(false);
-                    updatePlaceholder();
-                    screen.render();
-                }
-                return;
-            }
         }
 
         // Check input content on next tick to see if we should show palette
@@ -833,6 +947,10 @@ export async function startTUI(options: TUIOptions): Promise<void> {
             
             if (val && val.startsWith('/')) {
                 toggleFileAutocomplete(false);
+                fileSelectedIndex = 0;
+                
+                // Reset palette selection when filter changes
+                paletteSelectedIndex = 0;
                 togglePalette(true, val);
                 
                 // Check for file commands that need autocomplete
@@ -842,14 +960,21 @@ export async function startTUI(options: TUIOptions): Promise<void> {
                         const query = val.substring(cmd.length);
                         if (query.length > 0) {
                             togglePalette(false);
+                            paletteSelectedIndex = 0;
                             toggleFileAutocomplete(true, query);
                         }
                         break;
                     }
                 }
             } else {
-                if (showPalette) togglePalette(false);
-                if (showFileAutocomplete) toggleFileAutocomplete(false);
+                if (showPalette) {
+                    togglePalette(false);
+                    paletteSelectedIndex = 0;
+                }
+                if (showFileAutocomplete) {
+                    toggleFileAutocomplete(false);
+                    fileSelectedIndex = 0;
+                }
             }
             screen.render();
         });
@@ -860,19 +985,19 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         const inputValue = value || input.getValue() || '';
         
         if (showPalette && inputValue.startsWith('/')) {
-            const selectedIndex = (palette as any).selected || 0;
             const filter = inputValue.replace(/^\//, '').toLowerCase();
             const filteredCommands = COMMANDS.filter(c => 
                 c.name.startsWith(filter) || c.description.toLowerCase().includes(filter)
             );
 
-            if (filteredCommands[selectedIndex]) {
-                const cmd = filteredCommands[selectedIndex];
+            if (filteredCommands[paletteSelectedIndex]) {
+                const cmd = filteredCommands[paletteSelectedIndex];
                 const needsArgs = ['mode', 'model', 'open', 'read', 'cat', 'close', 'do', 'run', 'ask', 'fix', 'exec', 'search'].includes(cmd.name);
                 
                 if (needsArgs && !inputValue.includes(' ')) {
                     input.setValue('/' + cmd.name + ' ');
                     togglePalette(false);
+                    paletteSelectedIndex = 0;
                     input.focus();
                     updatePlaceholder();
                     screen.render();
@@ -883,8 +1008,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
 
         // Handle file autocomplete selection
         if (showFileAutocomplete && autocompleteFiles.length > 0) {
-            const selectedIndex = (fileAutocomplete as any).selected || 0;
-            const selectedFile = autocompleteFiles[selectedIndex];
+            const selectedFile = autocompleteFiles[fileSelectedIndex];
             if (selectedFile) {
                 const currentVal = inputValue;
                 const parts = currentVal.split(' ');
@@ -893,6 +1017,8 @@ export async function startTUI(options: TUIOptions): Promise<void> {
                 input.clearValue();
                 toggleFileAutocomplete(false);
                 togglePalette(false);
+                fileSelectedIndex = 0;
+                paletteSelectedIndex = 0;
                 updatePlaceholder();
                 screen.render();
                 
@@ -910,6 +1036,8 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         input.clearValue();
         togglePalette(false);
         toggleFileAutocomplete(false);
+        paletteSelectedIndex = 0;
+        fileSelectedIndex = 0;
         updatePlaceholder();
         screen.render();
         
@@ -1046,6 +1174,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
 
     // Global Key Bindings
     screen.key(['C-c'], () => {
+        stopMascotAnimation();
         onExit?.();
         return process.exit(0);
     });
@@ -1128,6 +1257,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     screen.key(['q'], () => {
         // Only quit if not focused on input
         if (screen.focused !== input) {
+            stopMascotAnimation();
             onExit?.();
             return process.exit(0);
         }
@@ -1141,6 +1271,11 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     process.on('uncaughtException', (err) => {
         output.log(`{red-fg}Error: ${err.message}{/red-fg}`);
         screen.render();
+    });
+
+    // Cleanup on exit
+    process.on('exit', () => {
+        stopMascotAnimation();
     });
 
     screen.render();

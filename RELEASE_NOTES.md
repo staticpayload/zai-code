@@ -1,3 +1,20 @@
+# v1.4.1 Release - UX Fixes
+
+## 🐛 Bug Fixes
+
+- Fixed command palette navigation - ↑↓ arrow keys now work properly to scroll through commands
+- Fixed Tab completion for command selection
+- Improved keyboard handling using screen-level events instead of input-level
+
+## 🎨 UI Improvements
+
+- New animated robot mascot that blinks and changes expressions
+- Cleaner, more compact header design
+- Better navigation hints in quick actions bar
+- Mascot animation cleanup on exit
+
+---
+
 # v1.4.0 Release - UX Overhaul & Vibe Coding
 
 ## 🎨 Major UX Improvements
