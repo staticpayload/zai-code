@@ -31,6 +31,7 @@ export interface ModelDefinition {
 export declare const ZAI_MODELS: ModelDefinition[];
 export declare const AVAILABLE_MODELS: string[];
 export declare function loadSettings(): Settings;
+export declare function clearSettingsCache(): void;
 export declare function saveSettings(settings: Settings): void;
 export declare function getSetting<K extends keyof Settings>(key: K): Settings[K];
 export declare function getModel(): string;

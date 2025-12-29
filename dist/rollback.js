@@ -39,6 +39,7 @@ exports.undoLast = undoLast;
 exports.undoN = undoN;
 exports.getUndoHistory = getUndoHistory;
 exports.getUndoCount = getUndoCount;
+exports.hasUndoHistory = hasUndoHistory;
 exports.clearUndoHistory = clearUndoHistory;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
@@ -90,15 +91,34 @@ function undoLast() {
                 if (entry.originalContent === null) {
                     if (fs.existsSync(entry.path)) {
                         fs.unlinkSync(entry.path);
+                        // Clean up empty parent directories
+                        const dir = path.dirname(entry.path);
+                        try {
+                            const dirContents = fs.readdirSync(dir);
+                            if (dirContents.length === 0) {
+                                fs.rmdirSync(dir);
+                            }
+                        }
+                        catch {
+                            // Ignore cleanup errors
+                        }
                     }
                     return { success: true, message: `Deleted: ${entry.path}`, entry };
                 }
                 // File existed before, restore original
+                const createDir = path.dirname(entry.path);
+                if (!fs.existsSync(createDir)) {
+                    fs.mkdirSync(createDir, { recursive: true });
+                }
                 fs.writeFileSync(entry.path, entry.originalContent, 'utf-8');
                 return { success: true, message: `Restored: ${entry.path}`, entry };
             case 'modify':
                 // Restore original content
                 if (entry.originalContent !== null) {
+                    const modifyDir = path.dirname(entry.path);
+                    if (!fs.existsSync(modifyDir)) {
+                        fs.mkdirSync(modifyDir, { recursive: true });
+                    }
                     fs.writeFileSync(entry.path, entry.originalContent, 'utf-8');
                     return { success: true, message: `Restored: ${entry.path}`, entry };
                 }
@@ -106,9 +126,9 @@ function undoLast() {
             case 'delete':
                 // File was deleted, restore it
                 if (entry.originalContent !== null) {
-                    const dir = path.dirname(entry.path);
-                    if (!fs.existsSync(dir)) {
-                        fs.mkdirSync(dir, { recursive: true });
+                    const deleteDir = path.dirname(entry.path);
+                    if (!fs.existsSync(deleteDir)) {
+                        fs.mkdirSync(deleteDir, { recursive: true });
                     }
                     fs.writeFileSync(entry.path, entry.originalContent, 'utf-8');
                     return { success: true, message: `Restored: ${entry.path}`, entry };
@@ -121,7 +141,7 @@ function undoLast() {
     catch (err) {
         // Re-add entry if undo failed
         rollbackState.entries.push(entry);
-        return { success: false, message: `Undo failed: ${err.message}` };
+        return { success: false, message: `Undo failed: ${err?.message || String(err)}` };
     }
 }
 // Undo multiple operations
@@ -146,6 +166,10 @@ function getUndoHistory() {
 // Get pending undo count
 function getUndoCount() {
     return rollbackState.entries.length;
+}
+// Check if there are pending undos
+function hasUndoHistory() {
+    return rollbackState.entries.length > 0;
 }
 // Clear undo history
 function clearUndoHistory() {

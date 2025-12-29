@@ -64,19 +64,18 @@ export async function runDiagnostics(): Promise<DiagnosticResult[]> {
   });
 
   // Check 5: Git available
-  let gitAvailable = false;
+  let gitVersion = '';
   try {
     const { execSync } = require('child_process');
-    execSync('git --version', { stdio: 'pipe' });
-    gitAvailable = true;
+    gitVersion = execSync('git --version', { stdio: 'pipe', encoding: 'utf-8' }).trim();
   } catch {
-    gitAvailable = false;
+    gitVersion = '';
   }
   results.push({
     name: 'Git',
-    status: gitAvailable ? 'pass' : 'warn',
-    message: gitAvailable ? 'Available' : 'Not found',
-    details: gitAvailable ? undefined : 'Git is recommended for version control',
+    status: gitVersion ? 'pass' : 'warn',
+    message: gitVersion || 'Not found',
+    details: gitVersion ? undefined : 'Git is recommended for version control',
   });
 
   // Check 6: Current model
@@ -94,6 +93,51 @@ export async function runDiagnostics(): Promise<DiagnosticResult[]> {
     name: 'Settings',
     status: settingsExist ? 'pass' : 'warn',
     message: settingsExist ? 'Found' : 'Using defaults',
+  });
+
+  // Check 8: Network connectivity
+  let networkOk = false;
+  try {
+    const https = require('https');
+    await new Promise<void>((resolve, reject) => {
+      const req = https.get('https://api.z.ai', { timeout: 5000 }, (res: any) => {
+        networkOk = res.statusCode < 500;
+        resolve();
+      });
+      req.on('error', () => resolve());
+      req.on('timeout', () => { req.destroy(); resolve(); });
+    });
+  } catch {
+    networkOk = false;
+  }
+  results.push({
+    name: 'Network',
+    status: networkOk ? 'pass' : 'warn',
+    message: networkOk ? 'Connected' : 'Cannot reach API',
+    details: networkOk ? undefined : 'Check internet connection',
+  });
+
+  // Check 9: Disk space
+  let diskOk = true;
+  try {
+    const { execSync } = require('child_process');
+    if (process.platform !== 'win32') {
+      const df = execSync(`df -k "${session.workingDirectory}"`, { encoding: 'utf-8' });
+      const lines = df.trim().split('\n');
+      if (lines.length > 1) {
+        const parts = lines[1].split(/\s+/);
+        const available = parseInt(parts[3], 10) * 1024; // bytes
+        diskOk = available > 100 * 1024 * 1024; // 100MB minimum
+      }
+    }
+  } catch {
+    // Ignore
+  }
+  results.push({
+    name: 'Disk Space',
+    status: diskOk ? 'pass' : 'warn',
+    message: diskOk ? 'OK' : 'Low',
+    details: diskOk ? undefined : 'Less than 100MB available',
   });
 
   return results;

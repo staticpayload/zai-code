@@ -50,10 +50,10 @@ function ensureHistoryDir() {
 }
 function logTask(entry) {
     ensureHistoryDir();
-    const line = JSON.stringify(entry) + '\n';
-    fs.appendFileSync(HISTORY_FILE, line, 'utf-8');
-    // Trim if too large
     try {
+        const line = JSON.stringify(entry) + '\n';
+        fs.appendFileSync(HISTORY_FILE, line, 'utf-8');
+        // Trim if too large
         const content = fs.readFileSync(HISTORY_FILE, 'utf-8');
         const lines = content.trim().split('\n');
         if (lines.length > MAX_ENTRIES) {
@@ -62,7 +62,7 @@ function logTask(entry) {
         }
     }
     catch {
-        // Ignore
+        // Ignore write errors - history is non-critical
     }
 }
 function getHistory(limit) {
@@ -71,14 +71,19 @@ function getHistory(limit) {
             return [];
         const content = fs.readFileSync(HISTORY_FILE, 'utf-8');
         const lines = content.trim().split('\n').filter(l => l.length > 0);
-        const entries = lines.map(l => {
+        const entries = [];
+        for (const line of lines) {
             try {
-                return JSON.parse(l);
+                const parsed = JSON.parse(line);
+                // Validate required fields
+                if (parsed && parsed.timestamp && parsed.intent) {
+                    entries.push(parsed);
+                }
             }
             catch {
-                return null;
+                // Skip malformed entries
             }
-        }).filter(Boolean);
+        }
         const reversed = entries.reverse();
         return limit ? reversed.slice(0, limit) : reversed;
     }

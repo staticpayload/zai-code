@@ -64,6 +64,15 @@ export async function runPlannerLoop(): Promise<PlannerResult> {
   let apiKey: string;
   try {
     apiKey = await ensureAuthenticated();
+    if (!apiKey) {
+      return {
+        success: false,
+        iterations: 0,
+        plan: null,
+        message: 'No API key configured. Run /doctor or zcode auth.',
+        needsConfirmation: false,
+      };
+    }
   } catch (e: any) {
     return {
       success: false,
@@ -74,15 +83,6 @@ export async function runPlannerLoop(): Promise<PlannerResult> {
     };
   }
   
-  if (!apiKey) {
-    return {
-      success: false,
-      iterations: 0,
-      plan: null,
-      message: 'No API key configured. Run /doctor or zcode auth.',
-      needsConfirmation: false,
-    };
-  }
   let iterations = 0;
   let currentPlan: PlanStep[] | null = null;
 
@@ -210,6 +210,15 @@ export async function runGenerateLoop(): Promise<GenerateResult> {
   let apiKey: string;
   try {
     apiKey = await ensureAuthenticated();
+    if (!apiKey) {
+      return {
+        success: false,
+        iterations: 0,
+        changes: null,
+        message: 'No API key configured. Run /doctor or zcode auth.',
+        needsConfirmation: false,
+      };
+    }
   } catch (e: any) {
     return {
       success: false,
@@ -220,15 +229,6 @@ export async function runGenerateLoop(): Promise<GenerateResult> {
     };
   }
   
-  if (!apiKey) {
-    return {
-      success: false,
-      iterations: 0,
-      changes: null,
-      message: 'No API key configured. Run /doctor or zcode auth.',
-      needsConfirmation: false,
-    };
-  }
   let iterations = 0;
   let currentChanges: ResponseSchema | null = null;
 

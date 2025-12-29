@@ -119,11 +119,15 @@ async function httpsGet(url, headers) {
     });
 }
 async function validateApiKey(key) {
+    if (!key || key.trim().length === 0) {
+        return false;
+    }
     try {
         const config = (0, config_1.loadConfig)();
         // Z.ai (Zhipu AI) international coding API
         const baseUrl = config.api?.baseUrl || 'https://api.z.ai/api/coding/paas/v4/';
-        const response = await httpsGet(`${baseUrl}models`, {
+        const modelsUrl = baseUrl.endsWith('/') ? `${baseUrl}models` : `${baseUrl}/models`;
+        const response = await httpsGet(modelsUrl, {
             'Authorization': `Bearer ${key}`,
         });
         return response.statusCode >= 200 && response.statusCode < 300;

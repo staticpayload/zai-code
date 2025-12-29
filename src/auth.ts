@@ -87,11 +87,16 @@ async function httpsGet(url: string, headers: Record<string, string>): Promise<{
 }
 
 export async function validateApiKey(key: string): Promise<boolean> {
+  if (!key || key.trim().length === 0) {
+    return false;
+  }
+  
   try {
-    const config = loadConfig() as { api: { baseUrl: string } };
+    const config = loadConfig() as { api?: { baseUrl?: string } };
     // Z.ai (Zhipu AI) international coding API
     const baseUrl = config.api?.baseUrl || 'https://api.z.ai/api/coding/paas/v4/';
-    const response = await httpsGet(`${baseUrl}models`, {
+    const modelsUrl = baseUrl.endsWith('/') ? `${baseUrl}models` : `${baseUrl}/models`;
+    const response = await httpsGet(modelsUrl, {
       'Authorization': `Bearer ${key}`,
     });
     return response.statusCode >= 200 && response.statusCode < 300;

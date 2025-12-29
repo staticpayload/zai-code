@@ -93,7 +93,16 @@ async function decomposeTask() {
     if (!intent) {
         return { success: false, steps: [], message: 'No intent set.' };
     }
-    const apiKey = await (0, auth_1.ensureAuthenticated)();
+    let apiKey;
+    try {
+        apiKey = await (0, auth_1.ensureAuthenticated)();
+        if (!apiKey) {
+            return { success: false, steps: [], message: 'No API key configured. Run zcode auth.' };
+        }
+    }
+    catch (e) {
+        return { success: false, steps: [], message: `Authentication failed: ${e?.message || e}` };
+    }
     // Build context
     const context = (0, context_builder_1.buildContext)(session.workingDirectory, intent, (0, session_1.getIntentType)() || 'COMMAND', session.openFiles.map(f => path.isAbsolute(f) ? f : path.join(session.workingDirectory, f)));
     const filesContext = (0, context_builder_1.formatContextForModel)(context);
@@ -135,7 +144,16 @@ async function planCurrentStep() {
         return { success: false, message: 'No current step. Use /decompose first.' };
     }
     const session = (0, session_1.getSession)();
-    const apiKey = await (0, auth_1.ensureAuthenticated)();
+    let apiKey;
+    try {
+        apiKey = await (0, auth_1.ensureAuthenticated)();
+        if (!apiKey) {
+            return { success: false, message: 'No API key configured. Run zcode auth.' };
+        }
+    }
+    catch (e) {
+        return { success: false, message: `Authentication failed: ${e?.message || e}` };
+    }
     const context = (0, context_builder_1.buildContext)(session.workingDirectory, step.description, (0, session_1.getIntentType)() || 'COMMAND', session.openFiles.map(f => path.isAbsolute(f) ? f : path.join(session.workingDirectory, f)));
     const filesContext = (0, context_builder_1.formatContextForModel)(context);
     const instruction = `Create a plan for this step:

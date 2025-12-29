@@ -177,13 +177,27 @@ async function handleAutoExecute(input: string): Promise<{ handled: boolean; mes
 
     console.log(info('Executing autonomously...'));
 
+    // Build context from workspace for better results
+    const { buildContext, formatContextForModel } = await import('./context/context_builder');
+    const context = buildContext(
+      session.workingDirectory,
+      input,
+      'CODE_EDIT',
+      session.openFiles.map(f => require('path').join(session.workingDirectory, f))
+    );
+    const filesContext = formatContextForModel(context);
+
     const instruction = `${modePrompt}
 
 Task: ${input}
 
-Execute this task. If it requires code changes, provide the file operations.
+Working directory: ${session.workingDirectory}
+
+${filesContext ? `Relevant files:\n${filesContext}` : ''}
+
+Execute this task completely. If it requires code changes, provide the file operations with full file content.
 If it's a question, answer it directly.
-Be decisive and complete the task.`;
+Be decisive and thorough.`;
 
     const result = await execute({ instruction }, apiKey);
 
@@ -194,25 +208,43 @@ Be decisive and complete the task.`;
       if (response.files && response.files.length > 0) {
         console.log(success(`Applying ${response.files.length} file(s)...`));
 
+        let applied = 0;
+        let failed = 0;
+        
         for (const file of response.files) {
           try {
-            const result = applyFileOperation(file.operation, file.path, file.content);
-            if (result.success) {
-              console.log(success(`${file.operation}: ${file.path}`));
+            const opResult = applyFileOperation(file.operation, file.path, file.content, {
+              basePath: session.workingDirectory
+            });
+            if (opResult.success) {
+              console.log(success(`  ${file.operation}: ${file.path}`));
+              applied++;
             } else {
-              console.log(error(`Failed ${file.path}: ${result.error}`));
+              console.log(error(`  Failed ${file.path}: ${opResult.error}`));
+              failed++;
             }
           } catch (e: any) {
-            console.log(error(`Failed ${file.path}: ${e?.message}`));
+            console.log(error(`  Failed ${file.path}: ${e?.message}`));
+            failed++;
           }
         }
+        
+        console.log('');
+        if (applied > 0) {
+          console.log(success(`Applied ${applied} file(s)`));
+        }
+        if (failed > 0) {
+          console.log(error(`Failed ${failed} file(s)`));
+        }
+        console.log(hint('/undo to rollback'));
       }
 
-      // Show output
-      const text = extractTextFromResponse(result.output);
-      if (text && text !== '{}') {
+      // Show output/explanation
+      if (response.output) {
         console.log('');
-        console.log(text);
+        console.log(response.output);
+      } else if (response.error) {
+        console.log(error(response.error));
       }
     } else {
       console.log(error(`Failed: ${result.error || 'Unknown error'}`));

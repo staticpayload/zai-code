@@ -45,7 +45,14 @@ const rollback_1 = require("./rollback");
  */
 function validatePath(filePath, basePath) {
     try {
-        let resolvedPath = path.resolve(filePath);
+        // Resolve relative to basePath if provided, otherwise cwd
+        let resolvedPath;
+        if (basePath) {
+            resolvedPath = path.resolve(basePath, filePath);
+        }
+        else {
+            resolvedPath = path.resolve(filePath);
+        }
         // Normalize the path to remove any redundant components
         resolvedPath = path.normalize(resolvedPath);
         // If basePath is provided, ensure the resolved path is within it
@@ -55,7 +62,8 @@ function validatePath(filePath, basePath) {
             // Check if the resolved path is within the base path
             const relativePath = path.relative(resolvedBaseNormalized, resolvedPath);
             // If the relative path starts with '..', it's outside the base path
-            if (relativePath.startsWith('..')) {
+            // Also check for absolute paths on Windows (e.g., C:\)
+            if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
                 return {
                     valid: false,
                     resolved: resolvedPath,
@@ -63,18 +71,16 @@ function validatePath(filePath, basePath) {
                 };
             }
         }
-        // Check for path traversal attempts in the original input
-        const normalizedInput = path.normalize(filePath);
-        if (normalizedInput.includes('..')) {
-            // If basePath is set, allow relative paths with .. as long as they resolve within basePath
-            if (!basePath) {
+        // Check for path traversal attempts in the original input when no basePath
+        if (!basePath) {
+            const normalizedInput = path.normalize(filePath);
+            if (normalizedInput.startsWith('..')) {
                 return {
                     valid: false,
                     resolved: resolvedPath,
                     error: `Path '${filePath}' contains path traversal`,
                 };
             }
-            // Re-check with basePath logic above
         }
         return { valid: true, resolved: resolvedPath };
     }
@@ -158,13 +164,11 @@ function applyFileOperation(operation, filePath, content, options) {
     // Actual operation
     switch (operation) {
         case 'create':
-            if (fs.existsSync(resolvedPath)) {
-                return { success: false, error: `File already exists: ${resolvedPath}` };
-            }
             if (content === undefined) {
                 return { success: false, error: 'Content required for create operation' };
             }
-            (0, rollback_1.createBackup)(resolvedPath, 'create');
+            // Allow create to overwrite existing files (common use case for code generation)
+            (0, rollback_1.createBackup)(resolvedPath, fs.existsSync(resolvedPath) ? 'modify' : 'create');
             return atomicWrite(resolvedPath, content);
         case 'modify':
             if (!fs.existsSync(resolvedPath)) {
@@ -208,6 +212,10 @@ function applyDiff(filePath, hunks, options) {
     if (!fs.existsSync(resolvedPath)) {
         return { success: false, error: `File does not exist: ${resolvedPath}` };
     }
+    // Validate hunks
+    if (!hunks || hunks.length === 0) {
+        return { success: false, error: 'No hunks provided' };
+    }
     // Read existing file
     let lines;
     try {
@@ -226,24 +234,43 @@ function applyDiff(filePath, hunks, options) {
     // Apply each hunk
     for (const hunk of sortedHunks) {
         const { start, end, content } = hunk;
+        // Validate hunk has required fields
+        if (typeof start !== 'number' || typeof end !== 'number') {
+            return {
+                success: false,
+                error: `Invalid hunk: start and end must be numbers`,
+            };
+        }
         // Convert from 1-indexed to 0-indexed
         const startIndex = start - 1;
         const endIndex = end - 1;
         // Validate line numbers
-        if (startIndex < 0 || startIndex >= lines.length) {
+        if (startIndex < 0) {
+            return {
+                success: false,
+                error: `Invalid hunk start line: ${start} (must be >= 1)`,
+            };
+        }
+        if (startIndex >= lines.length) {
             return {
                 success: false,
                 error: `Invalid hunk start line: ${start} (file has ${lines.length} lines)`,
             };
         }
-        if (endIndex < startIndex || endIndex >= lines.length) {
+        if (endIndex < startIndex) {
+            return {
+                success: false,
+                error: `Invalid hunk: end line (${end}) must be >= start line (${start})`,
+            };
+        }
+        if (endIndex >= lines.length) {
             return {
                 success: false,
                 error: `Invalid hunk end line: ${end} (file has ${lines.length} lines)`,
             };
         }
-        // Split content into lines
-        const newLines = content.split('\n');
+        // Split content into lines (handle undefined/null content)
+        const newLines = (content ?? '').split('\n');
         // Replace lines from start to end with new content
         lines.splice(startIndex, endIndex - startIndex + 1, ...newLines);
     }

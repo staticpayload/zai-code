@@ -64,6 +64,7 @@ export interface SessionState {
 }
 export declare function createSession(workingDirectory?: string): SessionState;
 export declare function getSession(): SessionState;
+export declare function initSession(workingDirectory: string): SessionState;
 export declare function resetSession(): void;
 export declare function addOpenFile(path: string): void;
 export declare function removeOpenFile(path: string): void;

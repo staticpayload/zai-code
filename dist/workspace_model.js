@@ -147,9 +147,11 @@ class Workspace {
                 fs.mkdirSync(stateDir, { recursive: true });
             }
             fs.writeFileSync(statePath, JSON.stringify(state, null, 2), 'utf-8');
+            return true;
         }
         catch {
             // Fail silently - state persistence is optional
+            return false;
         }
     }
     // Load workspace state from disk
@@ -160,7 +162,12 @@ class Workspace {
                 return null;
             }
             const content = fs.readFileSync(statePath, 'utf-8');
-            return JSON.parse(content);
+            const state = JSON.parse(content);
+            // Validate required fields
+            if (!state || typeof state.version !== 'number' || !state.workingDirectory) {
+                return null;
+            }
+            return state;
         }
         catch {
             return null;

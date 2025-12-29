@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PLAN_SCHEMA = void 0;
 exports.createSession = createSession;
 exports.getSession = getSession;
+exports.initSession = initSession;
 exports.resetSession = resetSession;
 exports.addOpenFile = addOpenFile;
 exports.removeOpenFile = removeOpenFile;
@@ -73,9 +74,15 @@ function getSession() {
     }
     return currentSession;
 }
+// Initialize session with a specific working directory
+function initSession(workingDirectory) {
+    currentSession = createSession(workingDirectory);
+    return currentSession;
+}
 // Reset the session to initial state
 function resetSession() {
-    currentSession = createSession(currentSession?.workingDirectory);
+    const workingDir = currentSession?.workingDirectory;
+    currentSession = createSession(workingDir);
 }
 // Session mutation helpers
 function addOpenFile(path) {

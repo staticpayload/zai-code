@@ -79,8 +79,14 @@ function getMemoryPath(workingDir) {
 function ensureMemoryDir(workingDir) {
     const baseDir = workingDir || process.cwd();
     const zaiDir = path.join(baseDir, '.zai');
-    if (!fs.existsSync(zaiDir)) {
-        fs.mkdirSync(zaiDir, { recursive: true });
+    try {
+        if (!fs.existsSync(zaiDir)) {
+            fs.mkdirSync(zaiDir, { recursive: true });
+        }
+        return true;
+    }
+    catch {
+        return false;
     }
 }
 // Load project context from .zai/context.md
@@ -100,19 +106,23 @@ function loadProjectContext(workingDir) {
 // Save project context to .zai/context.md
 function saveProjectContext(content, workingDir) {
     try {
-        ensureMemoryDir(workingDir);
+        if (!ensureMemoryDir(workingDir)) {
+            return false;
+        }
         const memoryPath = getMemoryPath(workingDir);
         fs.writeFileSync(memoryPath, content, 'utf-8');
+        return true;
     }
     catch {
         // Fail gracefully on permission errors
+        return false;
     }
 }
 // Append a rule to project context
 function appendProjectRule(rule, workingDir) {
     const existing = loadProjectContext(workingDir);
     const newContent = existing ? `${existing}\n${rule}` : rule;
-    saveProjectContext(newContent, workingDir);
+    return saveProjectContext(newContent, workingDir);
 }
 // Get the complete system prompt with project rules
 function getSystemPrompt(workingDir) {

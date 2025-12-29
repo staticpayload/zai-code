@@ -129,17 +129,24 @@ export function getWarnings(session: SessionState): string[] {
   const path = require('path');
   const os = require('os');
 
-  if (session.workingDirectory === os.homedir()) {
-    warnings.push('Warning: running in home directory');
-  }
+  try {
+    if (session.workingDirectory === os.homedir()) {
+      warnings.push('Warning: running in home directory');
+    }
 
-  const gitDir = path.join(session.workingDirectory, '.git');
-  if (!fs.existsSync(gitDir)) {
-    warnings.push('Not a git repository');
-  }
+    const gitDir = path.join(session.workingDirectory, '.git');
+    if (!fs.existsSync(gitDir)) {
+      warnings.push('Not a git repository');
+    }
 
-  if (session.pendingActions) {
-    warnings.push('Pending changes. Use /diff to review.');
+    if (session.pendingActions) {
+      const pendingCount = (session.pendingActions.files?.length || 0) + (session.pendingActions.diffs?.length || 0);
+      if (pendingCount > 0) {
+        warnings.push(`${pendingCount} pending change(s). Use /diff to review.`);
+      }
+    }
+  } catch {
+    // Ignore errors in warning generation
   }
 
   return warnings;

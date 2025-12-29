@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.orchestrate = orchestrate;
 const commands_1 = require("./commands");
@@ -148,39 +181,64 @@ async function handleAutoExecute(input) {
         const session = (0, session_1.getSession)();
         const modePrompt = (0, mode_prompts_1.buildSystemPrompt)('auto', session.workingDirectory);
         console.log((0, ui_1.info)('Executing autonomously...'));
+        // Build context from workspace for better results
+        const { buildContext, formatContextForModel } = await Promise.resolve().then(() => __importStar(require('./context/context_builder')));
+        const context = buildContext(session.workingDirectory, input, 'CODE_EDIT', session.openFiles.map(f => require('path').join(session.workingDirectory, f)));
+        const filesContext = formatContextForModel(context);
         const instruction = `${modePrompt}
 
 Task: ${input}
 
-Execute this task. If it requires code changes, provide the file operations.
+Working directory: ${session.workingDirectory}
+
+${filesContext ? `Relevant files:\n${filesContext}` : ''}
+
+Execute this task completely. If it requires code changes, provide the file operations with full file content.
 If it's a question, answer it directly.
-Be decisive and complete the task.`;
+Be decisive and thorough.`;
         const result = await (0, runtime_1.execute)({ instruction }, apiKey);
         if (result.success && result.output) {
             const response = result.output;
             // Check if there are file operations
             if (response.files && response.files.length > 0) {
                 console.log((0, ui_1.success)(`Applying ${response.files.length} file(s)...`));
+                let applied = 0;
+                let failed = 0;
                 for (const file of response.files) {
                     try {
-                        const result = (0, apply_1.applyFileOperation)(file.operation, file.path, file.content);
-                        if (result.success) {
-                            console.log((0, ui_1.success)(`${file.operation}: ${file.path}`));
+                        const opResult = (0, apply_1.applyFileOperation)(file.operation, file.path, file.content, {
+                            basePath: session.workingDirectory
+                        });
+                        if (opResult.success) {
+                            console.log((0, ui_1.success)(`  ${file.operation}: ${file.path}`));
+                            applied++;
                         }
                         else {
-                            console.log((0, ui_1.error)(`Failed ${file.path}: ${result.error}`));
+                            console.log((0, ui_1.error)(`  Failed ${file.path}: ${opResult.error}`));
+                            failed++;
                         }
                     }
                     catch (e) {
-                        console.log((0, ui_1.error)(`Failed ${file.path}: ${e?.message}`));
+                        console.log((0, ui_1.error)(`  Failed ${file.path}: ${e?.message}`));
+                        failed++;
                     }
                 }
-            }
-            // Show output
-            const text = extractTextFromResponse(result.output);
-            if (text && text !== '{}') {
                 console.log('');
-                console.log(text);
+                if (applied > 0) {
+                    console.log((0, ui_1.success)(`Applied ${applied} file(s)`));
+                }
+                if (failed > 0) {
+                    console.log((0, ui_1.error)(`Failed ${failed} file(s)`));
+                }
+                console.log((0, ui_1.hint)('/undo to rollback'));
+            }
+            // Show output/explanation
+            if (response.output) {
+                console.log('');
+                console.log(response.output);
+            }
+            else if (response.error) {
+                console.log((0, ui_1.error)(response.error));
             }
         }
         else {

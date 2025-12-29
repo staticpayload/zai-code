@@ -113,9 +113,16 @@ export function getSession(): SessionState {
   return currentSession;
 }
 
+// Initialize session with a specific working directory
+export function initSession(workingDirectory: string): SessionState {
+  currentSession = createSession(workingDirectory);
+  return currentSession;
+}
+
 // Reset the session to initial state
 export function resetSession(): void {
-  currentSession = createSession(currentSession?.workingDirectory);
+  const workingDir = currentSession?.workingDirectory;
+  currentSession = createSession(workingDir);
 }
 
 // Session mutation helpers

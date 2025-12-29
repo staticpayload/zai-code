@@ -218,8 +218,8 @@ function httpsPost(urlString, options = {}, timeout = REQUEST_TIMEOUT) {
     });
 }
 const DEFAULT_MODEL = 'glm-4.7';
-const DEFAULT_MAX_TOKENS = 4096;
-const REQUEST_TIMEOUT = 60000; // 60 seconds
+const DEFAULT_MAX_TOKENS = 8192;
+const REQUEST_TIMEOUT = 120000; // 120 seconds for longer operations
 async function makeRequest(url, chatRequest, apiKey, retries = 2) {
     let lastError = '';
     for (let attempt = 0; attempt <= retries; attempt++) {
@@ -234,16 +234,23 @@ async function makeRequest(url, chatRequest, apiKey, retries = 2) {
             });
             if (response.statusCode === 429) {
                 // Rate limited - wait and retry
-                const retryAfter = parseInt(response.headers['retry-after']) || 5;
+                const retryAfterHeader = response.headers['retry-after'];
+                const retryAfter = retryAfterHeader ? parseInt(String(retryAfterHeader), 10) : 5;
                 if (attempt < retries) {
-                    await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+                    await new Promise(resolve => setTimeout(resolve, (isNaN(retryAfter) ? 5 : retryAfter) * 1000));
                     continue;
                 }
                 return { success: false, error: 'Rate limited. Please try again later.' };
             }
+            if (response.statusCode === 401) {
+                return { success: false, error: 'Invalid API key. Run "zcode auth" to reconfigure.' };
+            }
+            if (response.statusCode === 403) {
+                return { success: false, error: 'Access forbidden. Check your API key permissions.' };
+            }
             if (response.statusCode >= 500 && attempt < retries) {
-                // Server error - retry
-                await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+                // Server error - retry with exponential backoff
+                await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
                 continue;
             }
             if (response.statusCode !== 200) {
@@ -261,7 +268,13 @@ async function makeRequest(url, chatRequest, apiKey, retries = 2) {
                 }
                 return { success: false, error: errorMessage };
             }
-            const chatResponse = JSON.parse(response.body);
+            let chatResponse;
+            try {
+                chatResponse = JSON.parse(response.body);
+            }
+            catch (parseError) {
+                return { success: false, error: 'Invalid JSON response from API' };
+            }
             if (chatResponse.error) {
                 return { success: false, error: chatResponse.error.message };
             }
@@ -269,9 +282,9 @@ async function makeRequest(url, chatRequest, apiKey, retries = 2) {
         }
         catch (error) {
             lastError = error instanceof Error ? error.message : String(error);
-            // Network errors - retry
+            // Network errors - retry with exponential backoff
             if (attempt < retries) {
-                await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+                await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
                 continue;
             }
         }

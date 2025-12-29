@@ -29,3 +29,6 @@ npm-debug.log*
 
 # Test
 coverage/
+
+# Project context
+PROJECT_CONTEXT.md

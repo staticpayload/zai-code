@@ -33,7 +33,7 @@ export declare class Workspace {
     getFileTree(): FileTreeNode | null;
     getFileIndex(): FileScore[];
     getCurrentState(): WorkspaceState;
-    saveState(): void;
+    saveState(): boolean;
     loadState(): WorkspaceState | null;
     restoreState(): boolean;
     clearState(): void;

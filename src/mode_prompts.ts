@@ -23,13 +23,15 @@ const MODE_PROMPTS: Record<SessionMode, ModePrompt> = {
 - Create, modify, or delete files as needed
 - Run necessary commands
 - Fix issues as you encounter them
-- Be proactive and thorough`,
+- Be proactive and thorough
+- Always provide complete file content, never use placeholders or ellipsis
+- Include all imports, exports, and dependencies`,
         outputFormat: `
 Return structured output with:
 - status: "success" or "error"
-- files: array of {path, operation: "create"|"modify"|"delete", content}
-- diffs: array of {path, hunks} for partial modifications
-- explanation: brief description of changes`,
+- files: array of {path, operation: "create"|"modify"|"delete", content} - ALWAYS include full file content
+- diffs: array of {file, hunks} for partial modifications
+- output: brief description of what was done`,
         allowedActions: { plan: true, generate: true, apply: true, execute: true },
     },
 
@@ -41,13 +43,15 @@ Return structured output with:
 - Follow existing code style and patterns
 - Write clean, maintainable code
 - Include necessary imports and dependencies
-- Handle edge cases appropriately`,
+- Handle edge cases appropriately
+- Always provide complete file content, never use placeholders
+- Preserve existing functionality unless explicitly asked to change it`,
         outputFormat: `
 Return structured output with:
 - status: "success" or "error"
-- files: array of {path, operation: "create"|"modify"|"delete", content}
-- diffs: array of {path, hunks} for partial modifications
-- explanation: brief description of changes`,
+- files: array of {path, operation: "create"|"modify"|"delete", content} - include FULL file content
+- diffs: array of {file, hunks} for partial modifications
+- output: brief explanation of changes`,
         allowedActions: { plan: true, generate: true, apply: true, execute: true },
     },
 
@@ -59,11 +63,12 @@ Return structured output with:
 - Do NOT suggest modifications
 - Do NOT plan file operations
 - Do NOT generate diffs
-- Focus on understanding and education`,
+- Focus on understanding and education
+- Use code examples only for illustration`,
         outputFormat: `
 Return a direct answer in natural language. Structure:
-- explanation: the answer to the question
-- references: optional list of relevant files or concepts`,
+- output: the answer to the question
+- status: "success"`,
         allowedActions: { plan: false, generate: false, apply: false, execute: false },
     },
 
@@ -78,9 +83,8 @@ Return a direct answer in natural language. Structure:
 - Focus on teaching and clarity`,
         outputFormat: `
 Return an educational explanation:
-- explanation: clear breakdown of the code/concept
-- keyPoints: list of important takeaways
-- examples: optional code examples for illustration`,
+- output: clear breakdown of the code/concept
+- status: "success"`,
         allowedActions: { plan: false, generate: false, apply: false, execute: false },
     },
 
@@ -96,9 +100,8 @@ Return an educational explanation:
 - Only analyze and report`,
         outputFormat: `
 Return a structured review:
-- summary: overall assessment
-- issues: array of {severity: "critical"|"warning"|"suggestion", location, description, recommendation}
-- positives: things done well`,
+- output: overall assessment with issues and recommendations
+- status: "success"`,
         allowedActions: { plan: false, generate: false, apply: false, execute: false },
     },
 
@@ -110,13 +113,13 @@ Return a structured review:
 - Identify root causes
 - Suggest targeted fixes only
 - Minimize changes - fix only what's broken
-- Explain reasoning clearly`,
+- Explain reasoning clearly
+- Always provide complete file content for fixes`,
         outputFormat: `
 Return diagnostic findings:
-- rootCause: identified cause of the issue
-- analysis: step-by-step investigation
-- fix: minimal targeted fix (if in edit mode after diagnosis)
-- prevention: how to avoid this issue in future`,
+- output: root cause analysis and fix explanation
+- files: array of {path, operation, content} for the fix - include FULL file content
+- status: "success" or "error"`,
         allowedActions: { plan: true, generate: true, apply: true, execute: true },
     },
 };

@@ -96,7 +96,13 @@ export function getFileContent(filePath: string, maxSize?: number): string | nul
   const max = maxSize ?? DEFAULT_MAX_FILE_SIZE;
 
   try {
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
     const stats = fs.statSync(filePath);
+    if (!stats.isFile()) {
+      return null;
+    }
     if (stats.size > max) {
       return null;
     }

@@ -2,8 +2,12 @@ import {
   getSession,
   resetSession,
   addOpenFile,
+  removeOpenFile,
+  clearOpenFiles,
   setMode,
   getIntent,
+  setIntent,
+  clearIntent,
   setLastPlan,
   setLastDiff,
   setPendingActions,
@@ -25,12 +29,13 @@ import { executeCommand as execShellCommand, validateCommand, getAllowedCommands
 import { getWorkspace } from './workspace_model';
 import { ensureAuthenticated, hasValidCredentials } from './auth';
 import { execute, ResponseSchema } from './runtime';
-import { getFileContent } from './workspace';
+import { getFileContent, collectWorkspace } from './workspace';
 import { applyResponse } from './apply';
-import { success, error, info, hint } from './ui';
+import { success, error, info, hint, dim } from './ui';
 import { runPlannerLoop, runGenerateLoop } from './planner';
 import { decomposeTask, planCurrentStep, printProgress, completeCurrentStep, skipCurrentStep } from './task_runner';
-import { undoLast, undoN, getUndoHistory, clearUndoHistory } from './rollback';
+import { undoLast, undoN, getUndoHistory, clearUndoHistory, getUndoCount } from './rollback';
+import { buildSystemPrompt } from './mode_prompts';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -71,19 +76,438 @@ export function parseInput(input: string): ParsedCommand {
 
 // Stub handlers for all commands
 const handlers: Record<string, CommandHandler> = {
-  help: () => {
+  help: (ctx) => {
+    const topic = ctx.args[0]?.toLowerCase();
+    
+    if (topic === 'modes') {
+      console.log('Modes:');
+      console.log('  auto    - YOLO mode: execute tasks directly without confirmation');
+      console.log('  edit    - Default: plan → generate → review → apply workflow');
+      console.log('  ask     - Read-only: answer questions, no file changes');
+      console.log('  explain - Read-only: explain code concepts');
+      console.log('  review  - Read-only: code review and analysis');
+      console.log('  debug   - Investigate and fix issues');
+      return;
+    }
+    
+    if (topic === 'workflow') {
+      console.log('Workflow:');
+      console.log('  1. Type a task (e.g., "add error handling to auth.ts")');
+      console.log('  2. /plan    - Generate execution plan');
+      console.log('  3. /generate - Create file changes');
+      console.log('  4. /diff    - Review changes');
+      console.log('  5. /apply   - Apply changes');
+      console.log('  6. /undo    - Rollback if needed');
+      return;
+    }
+    
+    if (topic === 'shortcuts') {
+      console.log('Shortcuts:');
+      console.log('  /do <task>  - Quick execute: plan + generate in one step');
+      console.log('  /run <task> - Auto mode: plan + generate + apply');
+      console.log('  /ask <q>    - Quick question without changing mode');
+      console.log('  /fix <desc> - Quick debug mode task');
+      return;
+    }
+    
+    console.log('Commands:');
+    console.log('');
     console.log('Navigation:');
-    console.log('  /help /context /files /open /workspace');
+    console.log('  /help [topic]  /context  /files  /open  /close  /workspace  /search');
+    console.log('');
     console.log('Execution:');
-    console.log('  /plan /generate /diff /apply /undo');
+    console.log('  /plan  /generate  /diff  /apply  /undo  /do  /run  /retry');
+    console.log('');
     console.log('Modes:');
-    console.log('  /ask /mode /model /dry-run /profile');
+    console.log('  /mode  /ask  /model  /dry-run  /profile');
+    console.log('');
     console.log('Tasks:');
-    console.log('  /decompose /step /next /skip /progress');
+    console.log('  /decompose  /step  /next  /skip  /progress  /clear');
+    console.log('');
     console.log('System:');
-    console.log('  /settings /git /exec /history /doctor');
+    console.log('  /settings  /git  /commit  /exec  /history  /doctor  /version');
+    console.log('');
     console.log('Session:');
-    console.log('  /reset /exit');
+    console.log('  /reset  /save  /load  /exit');
+    console.log('');
+    console.log(dim('Run /help <topic> for details: modes, workflow, shortcuts'));
+  },
+  
+  // Quick execute - plan + generate in one step
+  do: async (ctx) => {
+    const task = ctx.args.join(' ');
+    if (!task) {
+      console.log('Usage: /do <task>');
+      console.log('Example: /do add input validation to login form');
+      return;
+    }
+    
+    // Set intent
+    setIntent(task);
+    console.log(info(`Task: ${task}`));
+    
+    // Plan
+    console.log(dim('Planning...'));
+    const planResult = await runPlannerLoop();
+    if (!planResult.success) {
+      console.log(error(planResult.message));
+      return;
+    }
+    console.log(success(`Plan: ${planResult.plan?.length || 0} steps`));
+    
+    // Generate
+    console.log(dim('Generating...'));
+    const genResult = await runGenerateLoop();
+    if (!genResult.success) {
+      console.log(error(genResult.message));
+      return;
+    }
+    
+    const fileCount = (genResult.changes?.files?.length || 0) + (genResult.changes?.diffs?.length || 0);
+    console.log(success(`Generated ${fileCount} file change(s)`));
+    console.log(hint('/diff to review, /apply to execute'));
+  },
+  
+  // Full auto run - plan + generate + apply
+  run: async (ctx) => {
+    const task = ctx.args.join(' ');
+    if (!task) {
+      console.log('Usage: /run <task>');
+      console.log('Warning: This will apply changes automatically!');
+      return;
+    }
+    
+    const session = getSession();
+    if (session.dryRun) {
+      console.log(error('Dry-run mode enabled. Use /dry-run off first.'));
+      return;
+    }
+    
+    // Set intent
+    setIntent(task);
+    console.log(info(`Task: ${task}`));
+    
+    // Plan
+    console.log(dim('Planning...'));
+    const planResult = await runPlannerLoop();
+    if (!planResult.success) {
+      console.log(error(planResult.message));
+      return;
+    }
+    console.log(success(`Plan: ${planResult.plan?.length || 0} steps`));
+    
+    // Generate
+    console.log(dim('Generating...'));
+    const genResult = await runGenerateLoop();
+    if (!genResult.success) {
+      console.log(error(genResult.message));
+      return;
+    }
+    
+    // Apply
+    console.log(dim('Applying...'));
+    const actions = session.pendingActions;
+    if (!actions || ((!actions.files || actions.files.length === 0) && (!actions.diffs || actions.diffs.length === 0))) {
+      console.log('No changes to apply.');
+      return;
+    }
+    
+    const result = applyResponse(actions, {
+      basePath: session.workingDirectory,
+      dryRun: false,
+    });
+    
+    if (!result.success) {
+      for (const failed of result.failed) {
+        console.log(error(`Failed: ${failed.path}: ${failed.error}`));
+      }
+      return;
+    }
+    
+    setPendingActions(null);
+    console.log(success(`Applied ${result.applied.length} change(s)`));
+    console.log(hint('/undo to rollback'));
+  },
+  
+  // Retry last failed operation
+  retry: async () => {
+    const session = getSession();
+    
+    if (session.lastPlan && session.lastPlan.length > 0 && !session.lastDiff) {
+      // Have plan but no diff - retry generate
+      console.log(dim('Retrying generation...'));
+      const result = await runGenerateLoop();
+      if (result.success) {
+        console.log(success('Generation succeeded on retry'));
+        console.log(hint('/diff to review'));
+      } else {
+        console.log(error(result.message));
+      }
+      return;
+    }
+    
+    if (getIntent() && (!session.lastPlan || session.lastPlan.length === 0)) {
+      // Have intent but no plan - retry plan
+      console.log(dim('Retrying planning...'));
+      const result = await runPlannerLoop();
+      if (result.success) {
+        console.log(success('Planning succeeded on retry'));
+        console.log(hint('/generate to create changes'));
+      } else {
+        console.log(error(result.message));
+      }
+      return;
+    }
+    
+    console.log('Nothing to retry.');
+  },
+  
+  // Clear current task
+  clear: () => {
+    clearIntent();
+    setLastPlan(null);
+    setLastDiff(null);
+    setPendingActions(null);
+    console.log('Task cleared.');
+  },
+  
+  // Close/remove file from context
+  close: (ctx) => {
+    const filePath = ctx.args[0];
+    if (!filePath) {
+      console.log('Usage: /close <path> or /close all');
+      return;
+    }
+    
+    if (filePath === 'all') {
+      clearOpenFiles();
+      console.log('All files removed from context.');
+      return;
+    }
+    
+    removeOpenFile(filePath);
+    console.log(`Removed: ${filePath}`);
+  },
+  
+  // Search files in workspace
+  search: (ctx) => {
+    const query = ctx.args.join(' ');
+    if (!query) {
+      console.log('Usage: /search <pattern>');
+      return;
+    }
+    
+    const session = getSession();
+    const ws = getWorkspace(session.workingDirectory);
+    ws.indexFileTree();
+    const files = ws.getFileIndex();
+    
+    const pattern = query.toLowerCase();
+    const matches = files.filter(f => f.path.toLowerCase().includes(pattern));
+    
+    if (matches.length === 0) {
+      console.log(`No files matching "${query}"`);
+      return;
+    }
+    
+    console.log(`Found ${matches.length} file(s):`);
+    for (const m of matches.slice(0, 20)) {
+      console.log(`  ${m.path}`);
+    }
+    if (matches.length > 20) {
+      console.log(dim(`  ... and ${matches.length - 20} more`));
+    }
+  },
+  
+  // Quick ask without changing mode
+  'ask-quick': async (ctx) => {
+    const question = ctx.args.join(' ');
+    if (!question) {
+      console.log('Usage: /ask <question>');
+      return;
+    }
+    
+    let apiKey: string;
+    try {
+      apiKey = await ensureAuthenticated();
+      if (!apiKey) {
+        console.log(error('No API key configured.'));
+        return;
+      }
+    } catch (e: any) {
+      console.log(error(`Auth failed: ${e?.message}`));
+      return;
+    }
+    
+    const session = getSession();
+    const modePrompt = buildSystemPrompt('ask', session.workingDirectory);
+    
+    console.log(dim('Thinking...'));
+    const result = await execute({
+      instruction: `${modePrompt}\n\nQuestion: ${question}\n\nAnswer concisely.`,
+      enforceSchema: false,
+    }, apiKey);
+    
+    if (result.success && result.output) {
+      const text = typeof result.output === 'string' ? result.output : JSON.stringify(result.output, null, 2);
+      console.log(text);
+    } else {
+      console.log(error(result.error || 'Failed'));
+    }
+  },
+  
+  // Quick fix/debug
+  fix: async (ctx) => {
+    const description = ctx.args.join(' ');
+    if (!description) {
+      console.log('Usage: /fix <problem description>');
+      return;
+    }
+    
+    setMode('debug');
+    setIntent(`Fix: ${description}`);
+    console.log(info(`Debug task: ${description}`));
+    console.log(hint('/plan to start debugging'));
+  },
+  
+  // Save session to disk
+  save: () => {
+    const session = getSession();
+    const ws = getWorkspace(session.workingDirectory);
+    const saved = ws.saveState();
+    if (saved) {
+      console.log(success('Session saved to .zai/workspace.json'));
+    } else {
+      console.log(error('Failed to save session'));
+    }
+  },
+  
+  // Load session from disk
+  load: () => {
+    const session = getSession();
+    const ws = getWorkspace(session.workingDirectory);
+    const restored = ws.restoreState();
+    if (restored) {
+      console.log(success('Session restored'));
+      console.log(`Mode: ${session.mode}`);
+      console.log(`Intent: ${session.currentIntent || 'none'}`);
+      console.log(`Files: ${session.openFiles.length}`);
+    } else {
+      console.log('No saved session found.');
+    }
+  },
+  
+  // Git commit helper
+  commit: async (ctx) => {
+    const message = ctx.args.join(' ');
+    const session = getSession();
+    const gitInfo = getGitInfo(session.workingDirectory);
+    
+    if (!gitInfo.isRepo) {
+      console.log(error('Not a git repository.'));
+      return;
+    }
+    
+    if (!gitInfo.isDirty) {
+      console.log('Nothing to commit (working tree clean).');
+      return;
+    }
+    
+    if (!message) {
+      // Generate commit message
+      let apiKey: string;
+      try {
+        apiKey = await ensureAuthenticated();
+        if (!apiKey) {
+          console.log('Usage: /commit <message>');
+          return;
+        }
+      } catch {
+        console.log('Usage: /commit <message>');
+        return;
+      }
+      
+      console.log(dim('Generating commit message...'));
+      
+      // Get git diff
+      const { execSync } = require('child_process');
+      let diff = '';
+      try {
+        diff = execSync('git diff --staged', { cwd: session.workingDirectory, encoding: 'utf-8', maxBuffer: 50000 });
+        if (!diff) {
+          diff = execSync('git diff', { cwd: session.workingDirectory, encoding: 'utf-8', maxBuffer: 50000 });
+        }
+      } catch {
+        console.log(error('Failed to get git diff'));
+        return;
+      }
+      
+      if (!diff) {
+        console.log('No changes to commit.');
+        return;
+      }
+      
+      const result = await execute({
+        instruction: `Generate a concise git commit message for these changes. Use conventional commit format (feat/fix/docs/refactor/etc). Output ONLY the commit message, nothing else.\n\nDiff:\n${diff.substring(0, 5000)}`,
+        enforceSchema: false,
+      }, apiKey);
+      
+      if (result.success && result.output) {
+        const msg = typeof result.output === 'string' ? result.output.trim() : String(result.output);
+        console.log(`Suggested: ${msg}`);
+        console.log(hint(`/commit ${msg}`));
+      } else {
+        console.log('Usage: /commit <message>');
+      }
+      return;
+    }
+    
+    // Execute commit
+    const { execSync } = require('child_process');
+    try {
+      execSync('git add -A', { cwd: session.workingDirectory, stdio: 'pipe' });
+      execSync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd: session.workingDirectory, stdio: 'pipe' });
+      console.log(success(`Committed: ${message}`));
+    } catch (e: any) {
+      console.log(error(`Commit failed: ${e?.message || e}`));
+    }
+  },
+  
+  // Version info
+  version: () => {
+    try {
+      const pkg = require('../package.json');
+      console.log(`zai-code v${pkg.version}`);
+      console.log(`Node.js ${process.version}`);
+      console.log(`Platform: ${process.platform} ${process.arch}`);
+    } catch {
+      console.log('zai-code');
+    }
+  },
+  
+  // Status - comprehensive overview
+  status: () => {
+    const session = getSession();
+    const gitInfo = getGitInfo(session.workingDirectory);
+    const undoCount = getUndoCount();
+    
+    console.log(`Mode: ${session.mode}${session.dryRun ? ' (dry-run)' : ''}`);
+    console.log(`Model: ${getModel()}`);
+    console.log(`Working dir: ${session.workingDirectory}`);
+    console.log('');
+    
+    if (gitInfo.isRepo) {
+      console.log(`Git: ${gitInfo.branch}${gitInfo.isDirty ? '*' : ''} (${gitInfo.uncommittedFiles} uncommitted)`);
+    } else {
+      console.log('Git: not a repository');
+    }
+    console.log('');
+    
+    console.log(`Open files: ${session.openFiles.length}`);
+    console.log(`Intent: ${session.currentIntent ? session.currentIntent.substring(0, 50) + '...' : 'none'}`);
+    console.log(`Plan: ${session.lastPlan ? `${session.lastPlan.length} steps` : 'none'}`);
+    console.log(`Pending: ${session.pendingActions ? 'yes' : 'no'}`);
+    console.log(`Undo stack: ${undoCount} operation(s)`);
   },
   reset: () => {
     resetSession();
@@ -147,13 +571,85 @@ const handlers: Record<string, CommandHandler> = {
     }
   },
   open: (ctx) => {
-    const path = ctx.args[0];
-    if (!path) {
+    const filePath = ctx.args[0];
+    if (!filePath) {
       console.log('Usage: /open <path>');
       return;
     }
-    addOpenFile(path);
-    console.log(`Added: ${path}`);
+    
+    const session = getSession();
+    const fullPath = path.isAbsolute(filePath) ? filePath : path.join(session.workingDirectory, filePath);
+    
+    if (!fs.existsSync(fullPath)) {
+      console.log(error(`File not found: ${filePath}`));
+      return;
+    }
+    
+    addOpenFile(filePath);
+    console.log(success(`Added to context: ${filePath}`));
+  },
+  
+  // Read/view file contents
+  read: (ctx) => {
+    const filePath = ctx.args[0];
+    if (!filePath) {
+      console.log('Usage: /read <path> [lines]');
+      return;
+    }
+    
+    const session = getSession();
+    const fullPath = path.isAbsolute(filePath) ? filePath : path.join(session.workingDirectory, filePath);
+    
+    if (!fs.existsSync(fullPath)) {
+      console.log(error(`File not found: ${filePath}`));
+      return;
+    }
+    
+    const maxLines = ctx.args[1] ? parseInt(ctx.args[1], 10) : 50;
+    const content = getFileContent(fullPath, 100000);
+    
+    if (!content) {
+      console.log(error('File too large or unreadable'));
+      return;
+    }
+    
+    const lines = content.split('\n');
+    const displayLines = lines.slice(0, maxLines);
+    
+    console.log(dim(`--- ${filePath} (${lines.length} lines) ---`));
+    displayLines.forEach((line, i) => {
+      console.log(`${String(i + 1).padStart(4)} | ${line}`);
+    });
+    
+    if (lines.length > maxLines) {
+      console.log(dim(`... ${lines.length - maxLines} more lines`));
+    }
+  },
+  
+  // Cat file (alias for read, full content)
+  cat: (ctx) => {
+    const filePath = ctx.args[0];
+    if (!filePath) {
+      console.log('Usage: /cat <path>');
+      return;
+    }
+    
+    const session = getSession();
+    const fullPath = path.isAbsolute(filePath) ? filePath : path.join(session.workingDirectory, filePath);
+    
+    if (!fs.existsSync(fullPath)) {
+      console.log(error(`File not found: ${filePath}`));
+      return;
+    }
+    
+    const content = getFileContent(fullPath, 500000);
+    
+    if (!content) {
+      console.log(error('File too large or unreadable'));
+      return;
+    }
+    
+    console.log(content);
   },
   mode: (ctx) => {
     const newMode = ctx.args[0]?.toLowerCase();
@@ -291,7 +787,7 @@ const handlers: Record<string, CommandHandler> = {
       console.log(error(`Generation failed: ${e?.message || e}`));
     }
   },
-  diff: () => {
+  diff: (ctx) => {
     const session = getSession();
 
     // Check if there's a diff to display
@@ -301,13 +797,30 @@ const handlers: Record<string, CommandHandler> = {
     }
 
     const response = session.lastDiff;
+    const showFull = ctx.args[0] === 'full';
 
     // Display file operations if present
     if (response.files && response.files.length > 0) {
       for (const file of response.files) {
-        console.log(`--- ${file.operation}: ${file.path} ---`);
+        const opColor = file.operation === 'create' ? '\x1b[32m' : 
+                        file.operation === 'delete' ? '\x1b[31m' : '\x1b[33m';
+        const reset = '\x1b[0m';
+        
+        console.log(`${opColor}--- ${file.operation.toUpperCase()}: ${file.path} ---${reset}`);
+        
         if (file.content && file.operation !== 'delete') {
-          console.log(file.content);
+          const lines = file.content.split('\n');
+          const maxLines = showFull ? lines.length : 50;
+          
+          for (let i = 0; i < Math.min(lines.length, maxLines); i++) {
+            const lineNum = String(i + 1).padStart(4);
+            const prefix = file.operation === 'create' ? '\x1b[32m+' : ' ';
+            console.log(`${prefix}${lineNum} | ${lines[i]}${reset}`);
+          }
+          
+          if (lines.length > maxLines) {
+            console.log(dim(`... ${lines.length - maxLines} more lines (use /diff full to see all)`));
+          }
         }
         console.log('');
       }
@@ -316,36 +829,52 @@ const handlers: Record<string, CommandHandler> = {
     // Display diffs if present
     if (response.diffs && response.diffs.length > 0) {
       for (const diff of response.diffs) {
-        console.log(`--- ${diff.file} ---`);
+        console.log(`\x1b[33m--- MODIFY: ${diff.file} ---\x1b[0m`);
         for (const hunk of diff.hunks) {
-          console.log(`@@ -${hunk.start},${hunk.end - hunk.start + 1} @@`);
-          console.log(hunk.content);
+          console.log(`\x1b[36m@@ lines ${hunk.start}-${hunk.end} @@\x1b[0m`);
+          const lines = hunk.content.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('+')) {
+              console.log(`\x1b[32m${line}\x1b[0m`);
+            } else if (line.startsWith('-')) {
+              console.log(`\x1b[31m${line}\x1b[0m`);
+            } else {
+              console.log(line);
+            }
+          }
         }
         console.log('');
       }
     }
 
-    // If neither files nor diffs present
-    if ((!response.files || response.files.length === 0) &&
-      (!response.diffs || response.diffs.length === 0)) {
+    // Summary
+    const fileCount = (response.files?.length || 0);
+    const diffCount = (response.diffs?.length || 0);
+    
+    if (fileCount === 0 && diffCount === 0) {
       console.log('No file changes in last response.');
       return;
     }
+    
+    console.log(dim(`Total: ${fileCount} file operation(s), ${diffCount} diff(s)`));
+    console.log(hint('/apply to execute changes'));
   },
-  apply: () => {
+  apply: (ctx) => {
     const session = getSession();
+    const force = ctx.args[0] === '--force' || ctx.args[0] === '-f';
 
     // Check dry run mode
-    if (session.dryRun) {
+    if (session.dryRun && !force) {
       console.log(error('Dry-run mode. Apply blocked.'));
-      console.log(hint('/dry-run off'));
+      console.log(hint('/dry-run off or /apply --force'));
       return;
     }
 
     // Warn on dirty git
     const gitInfo = getGitInfo(session.workingDirectory);
-    if (gitInfo.isRepo && gitInfo.isDirty) {
-      console.log(info('Warning: uncommitted changes exist.'));
+    if (gitInfo.isRepo && gitInfo.isDirty && !force) {
+      console.log(info('Warning: uncommitted git changes exist.'));
+      console.log(hint('Consider committing first, or use /apply --force'));
     }
 
     // Check if there are pending actions
@@ -362,11 +891,15 @@ const handlers: Record<string, CommandHandler> = {
     const actions = session.pendingActions;
 
     // Check if there are actual file operations
-    if ((!actions.files || actions.files.length === 0) &&
-      (!actions.diffs || actions.diffs.length === 0)) {
+    const fileCount = (actions.files?.length || 0);
+    const diffCount = (actions.diffs?.length || 0);
+    
+    if (fileCount === 0 && diffCount === 0) {
       console.log('No file changes to apply.');
       return;
     }
+
+    console.log(info(`Applying ${fileCount + diffCount} change(s)...`));
 
     // Apply using the apply engine
     const result = applyResponse(actions, {
@@ -374,24 +907,101 @@ const handlers: Record<string, CommandHandler> = {
       dryRun: false,
     });
 
+    // Show results
+    for (const applied of result.applied) {
+      console.log(success(`  ${applied}`));
+    }
+    
+    for (const failed of result.failed) {
+      console.log(error(`  Failed: ${failed.path}: ${failed.error}`));
+    }
+
     if (!result.success) {
-      for (const failed of result.failed) {
-        console.log(error(`Failed: ${failed.path}: ${failed.error}`));
-      }
+      console.log(error(`\nSome operations failed. Use /undo to rollback.`));
       return;
     }
 
     // Clear pending actions after success
     setPendingActions(null);
+    setLastDiff(null);
+    clearIntent();
+    setLastPlan(null);
 
-    console.log('Applied.');
-    console.log('Session clean.');
+    console.log('');
+    console.log(success(`Applied ${result.applied.length} change(s) successfully.`));
+    console.log(hint('/undo to rollback'));
+    
+    // Log to history
+    if (session.currentIntent) {
+      logTask({
+        timestamp: new Date().toISOString(),
+        intent: session.currentIntent,
+        intentType: session.intentType || 'COMMAND',
+        mode: session.mode,
+        model: getModel(),
+        filesCount: result.applied.length,
+        outcome: 'success',
+      });
+    }
   },
   workspace: () => {
     const ws = getWorkspace();
     ws.indexFileTree();
     console.log(ws.printTreeSummary());
     console.log(`Root: ${ws.getRoot()}`);
+  },
+  
+  // Tree view of workspace
+  tree: (ctx) => {
+    const maxDepth = ctx.args[0] ? parseInt(ctx.args[0], 10) : 3;
+    const session = getSession();
+    const ws = getWorkspace(session.workingDirectory);
+    const tree = ws.indexFileTree(maxDepth);
+    
+    function printTree(node: any, prefix: string = '', isLast: boolean = true): void {
+      const connector = isLast ? '└── ' : '├── ';
+      const extension = isLast ? '    ' : '│   ';
+      
+      if (node.path !== '.') {
+        const icon = node.type === 'directory' ? '📁' : '📄';
+        console.log(`${prefix}${connector}${icon} ${node.name}`);
+      }
+      
+      if (node.children) {
+        const children = node.children;
+        children.forEach((child: any, index: number) => {
+          const childIsLast = index === children.length - 1;
+          const newPrefix = node.path === '.' ? '' : prefix + extension;
+          printTree(child, newPrefix, childIsLast);
+        });
+      }
+    }
+    
+    console.log(dim(`${session.workingDirectory}`));
+    printTree(tree);
+  },
+  
+  // List files matching pattern
+  ls: (ctx) => {
+    const pattern = ctx.args[0] || '.';
+    const session = getSession();
+    const targetPath = path.isAbsolute(pattern) ? pattern : path.join(session.workingDirectory, pattern);
+    
+    try {
+      const stats = fs.statSync(targetPath);
+      if (stats.isDirectory()) {
+        const entries = fs.readdirSync(targetPath, { withFileTypes: true });
+        for (const entry of entries) {
+          const icon = entry.isDirectory() ? '📁' : '📄';
+          const size = entry.isFile() ? ` (${fs.statSync(path.join(targetPath, entry.name)).size} bytes)` : '';
+          console.log(`${icon} ${entry.name}${size}`);
+        }
+      } else {
+        console.log(`${pattern}: ${stats.size} bytes`);
+      }
+    } catch (e: any) {
+      console.log(error(`Cannot access: ${pattern}`));
+    }
   },
   doctor: async () => {
     const { runDiagnostics, formatDiagnostics } = await import('./doctor');
@@ -632,22 +1242,184 @@ const handlers: Record<string, CommandHandler> = {
       console.log('Usage: /dry-run [on | off]');
     }
   },
-  git: () => {
+  git: (ctx) => {
     const session = getSession();
-    const info = getGitInfo(session.workingDirectory);
+    const gitInfo = getGitInfo(session.workingDirectory);
+    const subcommand = ctx.args[0];
 
-    if (!info.isRepo) {
+    if (!gitInfo.isRepo) {
       console.log('Not a git repository.');
       return;
     }
 
-    console.log(`Repository: ${info.repoName}`);
-    console.log(`Branch: ${info.branch}`);
-    console.log(`Status: ${info.isDirty ? 'dirty' : 'clean'}`);
-    if (info.uncommittedFiles > 0) {
-      console.log(`Uncommitted files: ${info.uncommittedFiles}`);
+    // /git status (default)
+    if (!subcommand || subcommand === 'status') {
+      console.log(`Repository: ${gitInfo.repoName}`);
+      console.log(`Branch: ${gitInfo.branch}`);
+      console.log(`Status: ${gitInfo.isDirty ? 'dirty' : 'clean'}`);
+      if (gitInfo.uncommittedFiles > 0) {
+        console.log(`Uncommitted files: ${gitInfo.uncommittedFiles}`);
+        
+        // Show changed files
+        try {
+          const { execSync } = require('child_process');
+          const status = execSync('git status --porcelain', { 
+            cwd: session.workingDirectory, 
+            encoding: 'utf-8',
+            stdio: ['pipe', 'pipe', 'pipe']
+          });
+          const lines = status.trim().split('\n').filter((l: string) => l);
+          for (const line of lines.slice(0, 10)) {
+            const status = line.substring(0, 2);
+            const file = line.substring(3);
+            const statusColor = status.includes('M') ? '\x1b[33m' : 
+                               status.includes('A') ? '\x1b[32m' :
+                               status.includes('D') ? '\x1b[31m' : '\x1b[36m';
+            console.log(`  ${statusColor}${status}\x1b[0m ${file}`);
+          }
+          if (lines.length > 10) {
+            console.log(dim(`  ... and ${lines.length - 10} more`));
+          }
+        } catch {
+          // Ignore
+        }
+      }
+      return;
+    }
+
+    // /git log
+    if (subcommand === 'log') {
+      try {
+        const { execSync } = require('child_process');
+        const log = execSync('git log --oneline -10', { 
+          cwd: session.workingDirectory, 
+          encoding: 'utf-8' 
+        });
+        console.log('Recent commits:');
+        console.log(log);
+      } catch (e: any) {
+        console.log(error('Failed to get git log'));
+      }
+      return;
+    }
+
+    // /git diff
+    if (subcommand === 'diff') {
+      try {
+        const { execSync } = require('child_process');
+        const diff = execSync('git diff --stat', { 
+          cwd: session.workingDirectory, 
+          encoding: 'utf-8' 
+        });
+        if (diff.trim()) {
+          console.log(diff);
+        } else {
+          console.log('No unstaged changes.');
+        }
+      } catch (e: any) {
+        console.log(error('Failed to get git diff'));
+      }
+      return;
+    }
+
+    // /git stash
+    if (subcommand === 'stash') {
+      try {
+        const { execSync } = require('child_process');
+        execSync('git stash', { cwd: session.workingDirectory, stdio: 'pipe' });
+        console.log(success('Changes stashed'));
+      } catch (e: any) {
+        console.log(error('Failed to stash'));
+      }
+      return;
+    }
+
+    // /git pop
+    if (subcommand === 'pop') {
+      try {
+        const { execSync } = require('child_process');
+        execSync('git stash pop', { cwd: session.workingDirectory, stdio: 'pipe' });
+        console.log(success('Stash popped'));
+      } catch (e: any) {
+        console.log(error('Failed to pop stash'));
+      }
+      return;
+    }
+
+    console.log('Usage: /git [status|log|diff|stash|pop]');
+  },
+  
+  // Create new file
+  touch: (ctx) => {
+    const filePath = ctx.args[0];
+    if (!filePath) {
+      console.log('Usage: /touch <path>');
+      return;
+    }
+    
+    const session = getSession();
+    const fullPath = path.isAbsolute(filePath) ? filePath : path.join(session.workingDirectory, filePath);
+    
+    if (fs.existsSync(fullPath)) {
+      console.log(error(`File already exists: ${filePath}`));
+      return;
+    }
+    
+    try {
+      const dir = path.dirname(fullPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(fullPath, '', 'utf-8');
+      console.log(success(`Created: ${filePath}`));
+      addOpenFile(filePath);
+    } catch (e: any) {
+      console.log(error(`Failed to create: ${e?.message}`));
     }
   },
+  
+  // Make directory
+  mkdir: (ctx) => {
+    const dirPath = ctx.args[0];
+    if (!dirPath) {
+      console.log('Usage: /mkdir <path>');
+      return;
+    }
+    
+    const session = getSession();
+    const fullPath = path.isAbsolute(dirPath) ? dirPath : path.join(session.workingDirectory, dirPath);
+    
+    if (fs.existsSync(fullPath)) {
+      console.log(error(`Already exists: ${dirPath}`));
+      return;
+    }
+    
+    try {
+      fs.mkdirSync(fullPath, { recursive: true });
+      console.log(success(`Created directory: ${dirPath}`));
+    } catch (e: any) {
+      console.log(error(`Failed to create: ${e?.message}`));
+    }
+  },
+};
+
+// Command aliases for convenience
+const COMMAND_ALIASES: Record<string, string> = {
+  'h': 'help',
+  '?': 'help',
+  'q': 'exit',
+  'quit': 'exit',
+  's': 'status',
+  'p': 'plan',
+  'g': 'generate',
+  'd': 'diff',
+  'a': 'apply',
+  'u': 'undo',
+  'c': 'context',
+  'f': 'files',
+  'm': 'mode',
+  'r': 'run',
+  'x': 'exec',
 };
 
 // Execute a parsed slash command
@@ -656,9 +1428,24 @@ export async function executeCommand(parsed: ParsedCommand): Promise<boolean> {
     return false;
   }
 
-  const handler = handlers[parsed.command];
+  // Resolve alias
+  const command = COMMAND_ALIASES[parsed.command] || parsed.command;
+
+  const handler = handlers[command];
   if (!handler) {
+    // Check for partial match
+    const matches = Object.keys(handlers).filter(h => h.startsWith(parsed.command!));
+    if (matches.length === 1) {
+      await handlers[matches[0]]({ args: parsed.args || [], rawInput: parsed.rawInput });
+      return true;
+    } else if (matches.length > 1) {
+      console.log(`Ambiguous command: /${parsed.command}`);
+      console.log(`Did you mean: ${matches.map(m => '/' + m).join(', ')}?`);
+      return true;
+    }
+    
     console.log(`Unknown command: /${parsed.command}`);
+    console.log(dim('Run /help for available commands'));
     return true;
   }
 

@@ -305,8 +305,8 @@ interface ChatResponse {
 }
 
 const DEFAULT_MODEL = 'glm-4.7';
-const DEFAULT_MAX_TOKENS = 4096;
-const REQUEST_TIMEOUT = 60000; // 60 seconds
+const DEFAULT_MAX_TOKENS = 8192;
+const REQUEST_TIMEOUT = 120000; // 120 seconds for longer operations
 
 async function makeRequest(
   url: string,
@@ -329,17 +329,26 @@ async function makeRequest(
 
       if (response.statusCode === 429) {
         // Rate limited - wait and retry
-        const retryAfter = parseInt(response.headers['retry-after'] as string) || 5;
+        const retryAfterHeader = response.headers['retry-after'];
+        const retryAfter = retryAfterHeader ? parseInt(String(retryAfterHeader), 10) : 5;
         if (attempt < retries) {
-          await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+          await new Promise(resolve => setTimeout(resolve, (isNaN(retryAfter) ? 5 : retryAfter) * 1000));
           continue;
         }
         return { success: false, error: 'Rate limited. Please try again later.' };
       }
 
+      if (response.statusCode === 401) {
+        return { success: false, error: 'Invalid API key. Run "zcode auth" to reconfigure.' };
+      }
+
+      if (response.statusCode === 403) {
+        return { success: false, error: 'Access forbidden. Check your API key permissions.' };
+      }
+
       if (response.statusCode >= 500 && attempt < retries) {
-        // Server error - retry
-        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        // Server error - retry with exponential backoff
+        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
         continue;
       }
 
@@ -358,7 +367,12 @@ async function makeRequest(
         return { success: false, error: errorMessage };
       }
 
-      const chatResponse = JSON.parse(response.body) as ChatResponse;
+      let chatResponse: ChatResponse;
+      try {
+        chatResponse = JSON.parse(response.body) as ChatResponse;
+      } catch (parseError) {
+        return { success: false, error: 'Invalid JSON response from API' };
+      }
 
       if (chatResponse.error) {
         return { success: false, error: chatResponse.error.message };
@@ -368,9 +382,9 @@ async function makeRequest(
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
       
-      // Network errors - retry
+      // Network errors - retry with exponential backoff
       if (attempt < retries) {
-        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
         continue;
       }
     }

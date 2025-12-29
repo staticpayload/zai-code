@@ -1,67 +1,163 @@
-# v1.2.15 Release
+# v1.3.0 Release - Major Feature Update
 
-## 🎉 What's New
+## 🚀 What's New
 
-### Authentication Overhaul
-- **Removed keytar dependency** — No more macOS Keychain issues
-- **Z_KEY environment variable** — Simple, portable authentication
-- **Auto shell profile setup** — Adds `export Z_KEY` to `.zshrc`/`.bashrc`
-- **Cross-platform support** — Works on macOS, Linux, Windows
+### New Commands
+- `/do <task>` - Quick execute: plan + generate in one step
+- `/run <task>` - Full auto: plan + generate + apply (YOLO)
+- `/retry` - Retry last failed operation
+- `/clear` - Clear current task and start fresh
+- `/fix <desc>` - Quick debug mode task
+- `/commit [msg]` - Git commit with auto-generated messages
+- `/search <pattern>` - Search files in workspace
+- `/read <file>` - View file contents with line numbers
+- `/cat <file>` - View full file contents
+- `/tree [depth]` - Visual directory tree
+- `/ls [path]` - List directory contents
+- `/touch <file>` - Create new file
+- `/mkdir <dir>` - Create directory
+- `/close <file>` - Remove file from context
+- `/save` / `/load` - Save/restore session state
+- `/status` - Comprehensive status overview
+- `/version` - Version and system info
 
-### Z.ai Coding Plan API
-- **Correct endpoint** — `api.z.ai/api/coding/paas/v4/`
-- **Bearer token auth** — Standard OpenAI-compatible format
-- **GLM models** — GLM-4.7, GLM-4.6, GLM-4.5
+### Enhanced Git Integration
+- `/git status` - Shows changed files with colors
+- `/git log` - Recent commits
+- `/git diff` - Diff stats
+- `/git stash` / `/git pop` - Stash management
+- `/commit` - Auto-generates commit messages using AI
 
-### Auto Mode
-- **YOLO mode** — Execute tasks directly without manual steps
-- **Direct file operations** — Creates/modifies files automatically
-- Use `/mode auto` to enable
+### Command Shortcuts & Aliases
+- `/h` → help, `/q` → exit, `/p` → plan, `/g` → generate
+- `/d` → diff, `/a` → apply, `/u` → undo, `/s` → status
+- Partial command matching (e.g., `/gen` → `/generate`)
 
-### TUI Improvements
-- **Fixed input box** — Proper key handling with `keys: true`
-- **Removed placeholder overlap** — Clean input area
-- **Better console capture** — log, error, warn properly redirected
-- **Settings modal fix** — Keyboard navigation works correctly
-- **TTY check** — Graceful handling of non-interactive terminals
+### Improved Diff Display
+- Syntax highlighting for additions/deletions
+- Line numbers
+- Color-coded operations (create=green, modify=yellow, delete=red)
+- `/diff full` to see complete file contents
 
-### Runtime Enhancements
-- **Request retries** — Automatic retry on 5xx errors and rate limits
-- **60s timeout** — Configurable request timeout
-- **Better error messages** — Network and timeout errors clearly explained
+### Better Apply Workflow
+- `--force` flag to bypass warnings
+- Detailed success/failure reporting
+- Auto-logs to history on success
+- Clears task state after successful apply
 
-### Response Parsing
-- **Markdown code block stripping** — No more raw JSON in output
-- **Smart field extraction** — Finds explanation/output/message fields
-- **Clean text display** — Human-readable responses
+### Enhanced Auto Mode
+- Includes workspace context for better results
+- Shows applied files with status
+- Proper error handling and rollback hints
+
+### Expanded Shell Commands
+- Added: python, python3, pip, pip3, rustc, cmake
+- Added: docker, kubectl
+- Added: touch, mkdir, cp, mv, diff, sort, uniq, sed, awk
+- Added: curl, wget (without pipe restrictions)
+- Improved dangerous pattern detection
+
+### Better Mode Prompts
+- Clearer instructions for complete file content
+- No placeholders or ellipsis in generated code
+- Improved output format specifications
+
+### Doctor Improvements
+- Network connectivity check
+- Disk space check
+- Git version display
+- More detailed diagnostics
+
+---
+
+## 🐛 Bug Fixes
+
+### Authentication & API
+- Fixed API key validation for empty keys
+- Fixed URL construction (no double slashes)
+- Added 401/403 error handling
+- Exponential backoff for retries
+- JSON parse error handling
+
+### File Operations
+- Fixed path validation with basePath
+- Fixed applyDiff hunk validation
+- Allow create to overwrite existing files
+- Better error messages for invalid hunks
+
+### Rollback/Undo
+- Ensure parent directories exist when restoring
+- Clean up empty directories after undo
+- Fixed error message construction
+
+### Settings
+- Fixed settings cache mutation bug
+- Added clearSettingsCache() function
+- Proper deep cloning with structuredClone()
+
+### Shell Execution
+- Fixed dangerous pattern regex (allow --verbose flags)
+- Handle commands with paths (./script.sh)
+- Validate working directory exists
+- Fixed exit code handling
+
+### Context Building
+- Fixed summarizeFile output size calculation
+- Validate root path exists before indexing
+
+### Session Management
+- Added initSession() for explicit initialization
+- Fixed resetSession to preserve working directory
+
+### History & Logging
+- Wrapped file operations in try/catch
+- Validate parsed JSON entries
 
 ---
 
 ## 📊 Stats
 
-- **7 versions** since v1.2.8
-- **~2,000 lines added**
-- **~39,000 lines removed** (keytar and native dependencies)
-- **Lighter package** — No native compilation required
+- **50+ new commands and features**
+- **20+ bug fixes**
+- **Improved error handling throughout**
+- **Better user experience with shortcuts and aliases**
 
 ---
 
 ## 📦 Install
 
 ```bash
-npm install -g @staticpayload/zai-code@1.2.15
+npm install -g @staticpayload/zai-code@1.3.0
 zcode auth
 zcode
 ```
 
 ---
 
+## Quick Start
+
+```bash
+# Interactive mode
+zcode
+
+# Quick task execution
+zcode
+> add input validation to login form
+> /do
+
+# Full auto mode
+zcode
+> /run add error handling to auth.ts
+
+# Ask questions
+zcode
+> /ask how does the auth flow work?
+```
+
+---
+
 ## Full Changelog
 
+- `v1.3.0` — Major feature update: 50+ new commands, bug fixes, improved UX
 - `v1.2.15` — Fix: Properly parse JSON responses from markdown code blocks
 - `v1.2.14` — Feat: Auto mode, retry logic, better TUI input handling
-- `v1.2.13` — Fix: Add keys:true to textbox for proper input
-- `v1.2.12` — Fix: Use Z.ai Coding Plan endpoint
-- `v1.2.11` — Feat: Switch to OpenAI-compatible format
-- `v1.2.10` — Feat: Auto-add Z_KEY to shell profile
-- `v1.2.9` — Feat: Replace keytar with Z_KEY env var

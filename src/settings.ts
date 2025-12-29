@@ -81,16 +81,21 @@ export function loadSettings(): Settings {
     if (fs.existsSync(SETTINGS_FILE)) {
       const content = fs.readFileSync(SETTINGS_FILE, 'utf-8');
       const loaded = JSON.parse(content);
-      // Deep merge with defaults
-      cachedSettings = deepMerge(DEFAULT_SETTINGS, loaded);
+      // Deep merge with defaults to ensure all fields exist
+      cachedSettings = deepMerge(structuredClone(DEFAULT_SETTINGS), loaded);
       return cachedSettings;
     }
   } catch {
     // Fall through to defaults
   }
 
-  cachedSettings = { ...DEFAULT_SETTINGS };
+  cachedSettings = structuredClone(DEFAULT_SETTINGS);
   return cachedSettings;
+}
+
+// Clear cached settings (useful for testing or reloading)
+export function clearSettingsCache(): void {
+  cachedSettings = null;
 }
 
 function deepMerge<T>(defaults: T, overrides: Partial<T>): T {

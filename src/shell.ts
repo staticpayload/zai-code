@@ -1,4 +1,5 @@
 import { execSync, ExecSyncOptions } from 'child_process';
+import * as path from 'path';
 import { getSession } from './session';
 
 // Platform-specific command aliases
@@ -22,9 +23,17 @@ const ALLOWED_COMMANDS = new Set([
   'vitest',
   'mocha',
   'pytest',
+  'python',
+  'python3',
+  'pip',
+  'pip3',
   'go',
   'cargo',
+  'rustc',
   'make',
+  'cmake',
+  'docker',
+  'kubectl',
   // Unix commands
   'ls',
   'cat',
@@ -35,17 +44,31 @@ const ALLOWED_COMMANDS = new Set([
   'find',
   'pwd',
   'echo',
+  'touch',
+  'mkdir',
+  'cp',
+  'mv',
+  'diff',
+  'sort',
+  'uniq',
+  'sed',
+  'awk',
+  'curl',
+  'wget',
   // Windows commands
   'dir',
   'type',
   'where',
   'findstr',
+  'copy',
+  'move',
+  'del',
 ]);
 
 // Dangerous patterns that are never allowed
 const DANGEROUS_PATTERNS = [
   /\|/,           // Pipes
-  />/,            // Redirects
+  /(?:^|[^-])>/,  // Redirects (but allow flags like --verbose)
   /</,            // Input redirects
   /;/,            // Command chaining
   /&&/,           // AND chaining
@@ -53,14 +76,13 @@ const DANGEROUS_PATTERNS = [
   /`/,            // Backticks
   /\$\(/,         // Command substitution
   /\$\{/,         // Variable expansion
-  /rm\s+-rf/i,    // Dangerous rm
-  /rm\s+--no-preserve-root/i,
-  /sudo/i,        // Sudo
-  /chmod\s+777/,  // Dangerous chmod
-  /curl.*\|.*sh/i, // Curl pipe to shell
-  /wget.*\|.*sh/i, // Wget pipe to shell
-  /eval/i,        // Eval
-  /exec/i,        // Exec (the shell builtin)
+  /\brm\s+-rf/i,  // Dangerous rm (word boundary to avoid false positives)
+  /\brm\s+--no-preserve-root/i,
+  /\bsudo\b/i,    // Sudo (word boundary)
+  /\bchmod\s+777\b/, // Dangerous chmod
+  /\bcurl\b.*\|.*\bsh\b/i, // Curl pipe to shell
+  /\bwget\b.*\|.*\bsh\b/i, // Wget pipe to shell
+  /\beval\s/i,    // Eval (followed by space to avoid matching 'evaluate')
 ];
 
 // Execution result
@@ -84,21 +106,26 @@ export function validateCommand(command: string): { valid: boolean; error?: stri
   // Check for dangerous patterns
   for (const pattern of DANGEROUS_PATTERNS) {
     if (pattern.test(trimmed)) {
-      return { valid: false, error: `Dangerous pattern detected: ${pattern.source}` };
+      return { valid: false, error: `Dangerous pattern detected` };
     }
   }
 
-  // Extract the base command
+  // Extract the base command (handle paths like ./script.sh or /usr/bin/node)
   const parts = trimmed.split(/\s+/);
-  const baseCommand = parts[0];
+  let baseCommand = parts[0];
 
   if (!baseCommand) {
     return { valid: false, error: 'Could not parse command' };
   }
 
+  // Extract just the command name from paths
+  if (baseCommand.includes('/')) {
+    baseCommand = path.basename(baseCommand);
+  }
+
   // Check allowlist
   if (!ALLOWED_COMMANDS.has(baseCommand)) {
-    return { valid: false, error: `Command not allowed: ${baseCommand}. Allowed: ${Array.from(ALLOWED_COMMANDS).join(', ')}` };
+    return { valid: false, error: `Command not allowed: ${baseCommand}. Allowed: ${Array.from(ALLOWED_COMMANDS).slice(0, 10).join(', ')}...` };
   }
 
   return { valid: true };
@@ -139,6 +166,19 @@ export function executeCommand(command: string, cwd?: string): ExecResult {
   const session = getSession();
   const workingDir = cwd || session.workingDirectory;
   
+  // Validate working directory exists
+  const fs = require('fs');
+  if (!fs.existsSync(workingDir)) {
+    return {
+      success: false,
+      command,
+      stdout: '',
+      stderr: '',
+      exitCode: -1,
+      error: `Working directory does not exist: ${workingDir}`,
+    };
+  }
+  
   // Translate command for Windows if needed
   const translatedCommand = translateCommand(command);
 
@@ -166,7 +206,7 @@ export function executeCommand(command: string, cwd?: string): ExecResult {
       command,
       stdout: err.stdout?.toString() || '',
       stderr: err.stderr?.toString() || '',
-      exitCode: err.status || 1,
+      exitCode: typeof err.status === 'number' ? err.status : 1,
       error: err.message,
     };
   }

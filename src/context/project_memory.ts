@@ -37,11 +37,16 @@ function getMemoryPath(workingDir?: string): string {
 }
 
 // Ensure .zai directory exists
-function ensureMemoryDir(workingDir?: string): void {
+function ensureMemoryDir(workingDir?: string): boolean {
   const baseDir = workingDir || process.cwd();
   const zaiDir = path.join(baseDir, '.zai');
-  if (!fs.existsSync(zaiDir)) {
-    fs.mkdirSync(zaiDir, { recursive: true });
+  try {
+    if (!fs.existsSync(zaiDir)) {
+      fs.mkdirSync(zaiDir, { recursive: true });
+    }
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -60,21 +65,25 @@ export function loadProjectContext(workingDir?: string): string {
 }
 
 // Save project context to .zai/context.md
-export function saveProjectContext(content: string, workingDir?: string): void {
+export function saveProjectContext(content: string, workingDir?: string): boolean {
   try {
-    ensureMemoryDir(workingDir);
+    if (!ensureMemoryDir(workingDir)) {
+      return false;
+    }
     const memoryPath = getMemoryPath(workingDir);
     fs.writeFileSync(memoryPath, content, 'utf-8');
+    return true;
   } catch {
     // Fail gracefully on permission errors
+    return false;
   }
 }
 
 // Append a rule to project context
-export function appendProjectRule(rule: string, workingDir?: string): void {
+export function appendProjectRule(rule: string, workingDir?: string): boolean {
   const existing = loadProjectContext(workingDir);
   const newContent = existing ? `${existing}\n${rule}` : rule;
-  saveProjectContext(newContent, workingDir);
+  return saveProjectContext(newContent, workingDir);
 }
 
 // Get the complete system prompt with project rules

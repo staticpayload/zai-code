@@ -71,7 +71,15 @@ export async function decomposeTask(): Promise<{ success: boolean; steps: TaskSt
     return { success: false, steps: [], message: 'No intent set.' };
   }
 
-  const apiKey = await ensureAuthenticated();
+  let apiKey: string;
+  try {
+    apiKey = await ensureAuthenticated();
+    if (!apiKey) {
+      return { success: false, steps: [], message: 'No API key configured. Run zcode auth.' };
+    }
+  } catch (e: any) {
+    return { success: false, steps: [], message: `Authentication failed: ${e?.message || e}` };
+  }
 
   // Build context
   const context = buildContext(
@@ -130,7 +138,16 @@ export async function planCurrentStep(): Promise<{ success: boolean; message: st
   }
 
   const session = getSession();
-  const apiKey = await ensureAuthenticated();
+  
+  let apiKey: string;
+  try {
+    apiKey = await ensureAuthenticated();
+    if (!apiKey) {
+      return { success: false, message: 'No API key configured. Run zcode auth.' };
+    }
+  } catch (e: any) {
+    return { success: false, message: `Authentication failed: ${e?.message || e}` };
+  }
 
   const context = buildContext(
     session.workingDirectory,

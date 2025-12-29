@@ -22,6 +22,7 @@ export declare function undoN(count: number): {
 };
 export declare function getUndoHistory(): BackupEntry[];
 export declare function getUndoCount(): number;
+export declare function hasUndoHistory(): boolean;
 export declare function clearUndoHistory(): void;
 export { rollbackState };
 //# sourceMappingURL=rollback.d.ts.map

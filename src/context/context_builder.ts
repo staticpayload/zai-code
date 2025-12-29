@@ -89,6 +89,11 @@ const SKIP_FILES = new Set([
 export function indexWorkspace(rootPath: string): FileScore[] {
   const files: FileScore[] = [];
 
+  // Validate root path exists
+  if (!fs.existsSync(rootPath)) {
+    return files;
+  }
+
   function walk(dir: string, depth: number = 0): void {
     if (depth > 10) return; // Max depth
 
@@ -194,6 +199,10 @@ export function scoreFileRelevance(
 
 // Summarize a large file to fit in context
 export function summarizeFile(content: string, maxChars: number): { summary: string; truncated: boolean } {
+  if (maxChars <= 0) {
+    return { summary: '', truncated: true };
+  }
+  
   if (content.length <= maxChars) {
     return { summary: content, truncated: false };
   }
@@ -201,11 +210,21 @@ export function summarizeFile(content: string, maxChars: number): { summary: str
   // Include first portion and last portion
   const headSize = Math.floor(maxChars * 0.7);
   const tailSize = Math.floor(maxChars * 0.2);
+  const truncationMessage = `\n\n... [${content.length - headSize - tailSize} chars truncated] ...\n\n`;
 
-  const head = content.slice(0, headSize);
-  const tail = content.slice(-tailSize);
+  // Ensure we have room for the truncation message
+  const effectiveMaxChars = maxChars - truncationMessage.length;
+  if (effectiveMaxChars <= 0) {
+    return { summary: content.slice(0, maxChars), truncated: true };
+  }
 
-  const summary = `${head}\n\n... [${content.length - headSize - tailSize} chars truncated] ...\n\n${tail}`;
+  const effectiveHeadSize = Math.floor(effectiveMaxChars * 0.7);
+  const effectiveTailSize = Math.floor(effectiveMaxChars * 0.2);
+
+  const head = content.slice(0, effectiveHeadSize);
+  const tail = content.slice(-effectiveTailSize);
+
+  const summary = `${head}${truncationMessage}${tail}`;
 
   return { summary, truncated: true };
 }
