@@ -144,7 +144,7 @@ async function startTUI(options) {
         width: '100%',
         height: 1,
         tags: true,
-        content: `{bold}Using:{/bold} ${session.openFiles.length || 1} ${projectName} file(s)`,
+        content: `{bold}${projectName}{/bold}  ·  ${session.openFiles.length || 0} file(s) in context`,
         style: {
             fg: 'white',
             bg: 'default',
