@@ -1,3 +1,34 @@
+# v1.4.2 Release - Core Functionality Fixes
+
+## 🐛 Critical Bug Fixes
+
+### Mode Routing Fixed
+- Fixed "hi" and casual chat triggering wrong workflow - now properly routes to chat handler
+- Added `isCasualChat()` detection for greetings, small talk, thanks, etc.
+- Added `isSimpleQuestion()` for short questions that don't need code context
+- New 'chat' workflow type for natural conversation
+
+### File Creation Fixed
+- Fixed auto mode not properly parsing file operations from model responses
+- Improved `parseFileOperations()` to handle various response formats
+- Better JSON extraction from markdown code blocks
+- Normalized file paths (removes leading `./`)
+
+### Output Scrolling Fixed
+- Added `mouse: true`, `keys: true`, `vi: true` to output log widget
+- Chat history is now scrollable with mouse wheel and keyboard
+
+### Mode Cycling Added
+- `Shift+Tab` now cycles through modes: edit → auto → ask → debug → review → explain
+- Visual feedback when mode changes
+
+### Improved Auto Mode
+- Better system prompt for file operations with explicit JSON format
+- Fallback handling when model doesn't return structured response
+- Shows raw output when no file operations detected
+
+---
+
 # v1.4.1 Release - UX Fixes
 
 ## 🐛 Bug Fixes

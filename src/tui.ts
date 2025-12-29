@@ -154,7 +154,7 @@ const MASCOT_FRAMES = [
 ];
 
 // Compact header with mascot
-const HEADER_WITH_MASCOT = `{bold}{cyan-fg}zai{/cyan-fg}{blue-fg}·{/blue-fg}{cyan-fg}code{/cyan-fg}{/bold} {gray-fg}v1.4.0{/gray-fg}`;
+const HEADER_WITH_MASCOT = `{bold}{cyan-fg}zai{/cyan-fg}{blue-fg}·{/blue-fg}{cyan-fg}code{/cyan-fg}{/bold} {gray-fg}v1.4.2{/gray-fg}`;
 
 const MINIMAL_LOGO = '{bold}{cyan-fg}⚡ zai·code{/cyan-fg}{/bold} {gray-fg}AI-native editor{/gray-fg}';
 
@@ -229,7 +229,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     function updateHeader() {
         if (shouldShowLogo()) {
             const mascot = MASCOT_FRAMES[mascotFrame];
-            const title = `{bold}{cyan-fg}zai{/cyan-fg}{blue-fg}·{/blue-fg}{cyan-fg}code{/cyan-fg}{/bold} {gray-fg}v1.4.0{/gray-fg}`;
+            const title = `{bold}{cyan-fg}zai{/cyan-fg}{blue-fg}·{/blue-fg}{cyan-fg}code{/cyan-fg}{/bold} {gray-fg}v1.4.2{/gray-fg}`;
             const subtitle = '{gray-fg}AI-native code editor{/gray-fg}';
             
             // Combine mascot with title
@@ -390,7 +390,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         warning.show();
     }
 
-    // Main output area
+    // Main output area - SCROLLABLE with mouse and keyboard
     const outputTop = warning.hidden ? warningTop : warningTop + 3;
     const output = blessed.log({
         top: outputTop,
@@ -400,8 +400,14 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         tags: true,
         scrollable: true,
         alwaysScroll: true,
+        mouse: true,
+        keys: true,
+        vi: true,
         scrollbar: {
-            ch: '│',
+            ch: '█',
+            track: {
+                bg: theme.bg,
+            },
             style: {
                 fg: theme.highlight,
                 bg: theme.bg
@@ -1171,6 +1177,32 @@ export async function startTUI(options: TUIOptions): Promise<void> {
             screen.removeListener('keypress', settingsKeyHandler);
         });
     }
+
+    // Mode cycling with Shift+Tab
+    const MODES: Array<'edit' | 'auto' | 'ask' | 'debug' | 'review' | 'explain'> = ['edit', 'auto', 'ask', 'debug', 'review', 'explain'];
+    let currentModeIndex = MODES.indexOf(session.mode as any) || 0;
+
+    function cycleMode(direction: 1 | -1 = 1) {
+        currentModeIndex = (currentModeIndex + direction + MODES.length) % MODES.length;
+        const newMode = MODES[currentModeIndex];
+        session.mode = newMode;
+        
+        const modeIcons: Record<string, string> = {
+            'edit': '✏️', 'auto': '⚡', 'ask': '❓', 'debug': '🔧', 'review': '👁', 'explain': '📖'
+        };
+        output.log(`{cyan-fg}${modeIcons[newMode]} Mode: ${newMode}{/cyan-fg}`);
+        
+        updateContextLine();
+        updateStatusBar();
+        updateModeIndicator();
+        updatePlaceholder();
+        screen.render();
+    }
+
+    // Shift+Tab to cycle modes
+    screen.key(['S-tab'], () => {
+        cycleMode(1);
+    });
 
     // Global Key Bindings
     screen.key(['C-c'], () => {

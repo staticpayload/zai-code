@@ -1,10 +1,11 @@
 import { parseInput, executeCommand, ParsedCommand } from './commands';
-import { getSession, setIntent, getIntent, IntentType, setIntentType, getMode, setPendingActions } from './session';
+import { getSession, setIntent, getIntent, IntentType, setIntentType, getMode, setPendingActions, setMode } from './session';
 import { hint, dim, error, success, info } from './ui';
 import { execute, ResponseSchema } from './runtime';
 import { ensureAuthenticated } from './auth';
 import { buildSystemPrompt } from './mode_prompts';
 import { applyFileOperation } from './apply';
+import * as path from 'path';
 
 // Helper to extract meaningful text from API response
 function extractTextFromResponse(response: unknown): string {
@@ -39,11 +40,48 @@ function extractTextFromResponse(response: unknown): string {
   return String(response);
 }
 
+// Try to parse file operations from response
+function parseFileOperations(response: unknown): ResponseSchema | null {
+  if (typeof response === 'string') {
+    // Try to extract JSON from markdown code blocks
+    let text = response;
+    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jsonMatch) {
+      text = jsonMatch[1];
+    }
+    
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed.files && Array.isArray(parsed.files)) {
+        return parsed as ResponseSchema;
+      }
+      if (parsed.status) {
+        return parsed as ResponseSchema;
+      }
+    } catch {
+      // Not valid JSON
+    }
+  }
+  
+  if (typeof response === 'object' && response !== null) {
+    const obj = response as Record<string, unknown>;
+    if (obj.files && Array.isArray(obj.files)) {
+      return obj as unknown as ResponseSchema;
+    }
+    if (obj.status) {
+      return obj as unknown as ResponseSchema;
+    }
+  }
+  
+  return null;
+}
+
 // Workflow types
 export type WorkflowType =
   | 'slash_command'
   | 'capture_intent'
   | 'ask_question'
+  | 'chat'
   | 'append_context'
   | 'confirm_action'
   | 'auto_execute'
@@ -57,11 +95,46 @@ export interface OrchestrationResult {
   message?: string;
 }
 
+// Check if input is casual chat (greetings, small talk)
+function isCasualChat(input: string): boolean {
+  const lower = input.toLowerCase().trim();
+  const casualPatterns = [
+    /^(hi|hello|hey|yo|sup|hola|howdy|greetings)[\s!.,]*$/i,
+    /^(good\s*(morning|afternoon|evening|night))[\s!.,]*$/i,
+    /^(what'?s?\s*up|how\s*are\s*you|how'?s?\s*it\s*going)[\s!?.,]*$/i,
+    /^(thanks|thank\s*you|thx|ty)[\s!.,]*$/i,
+    /^(bye|goodbye|see\s*ya|later|cya)[\s!.,]*$/i,
+    /^(ok|okay|sure|yes|no|yep|nope|yeah|nah)[\s!.,]*$/i,
+    /^(cool|nice|great|awesome|perfect)[\s!.,]*$/i,
+  ];
+  
+  return casualPatterns.some(pattern => pattern.test(lower));
+}
+
+// Check if input is a short simple question
+function isSimpleQuestion(input: string): boolean {
+  const lower = input.toLowerCase().trim();
+  // Short questions that don't need code context
+  if (input.length < 50 && /\?$/.test(input)) {
+    return true;
+  }
+  // Direct questions
+  if (/^(what|why|how|when|where|who|can you|could you|would you|will you)\s/i.test(lower)) {
+    return true;
+  }
+  return false;
+}
+
 // Intent classification (rule-based, no model)
 function classifyIntent(input: string): IntentType {
   const lower = input.toLowerCase().trim();
 
-  // QUESTION
+  // CASUAL CHAT - handle separately
+  if (isCasualChat(input)) {
+    return 'QUESTION'; // Route to chat handler
+  }
+
+  // QUESTION - explicit questions
   if (/^(what|why|how|when|where|who|explain|clarify|describe|tell me)/i.test(lower) ||
     /\?$/.test(lower) ||
     /^(is|are|can|could|would|should|do|does|did|has|have|will)\s/i.test(lower)) {
@@ -83,17 +156,32 @@ function classifyIntent(input: string): IntentType {
     return 'REVIEW';
   }
 
-  // CODE_EDIT
-  if (/(add|create|implement|update|change|modify|write|build|make|generate|new|feature|function|component|edit|insert|append|remove|delete|replace)/i.test(lower)) {
+  // CODE_EDIT - file operations
+  if (/(add|create|implement|update|change|modify|write|build|make|generate|new|feature|function|component|edit|insert|append|remove|delete|replace|file|folder|directory)/i.test(lower)) {
     return 'CODE_EDIT';
   }
 
-  return 'COMMAND';
+  // Default to QUESTION for short inputs, CODE_EDIT for longer ones
+  if (input.length < 30) {
+    return 'QUESTION';
+  }
+
+  return 'CODE_EDIT';
 }
 
-// Determine workflow based on mode
-function determineWorkflow(intent: IntentType, hasExistingIntent: boolean): WorkflowType {
+// Determine workflow based on mode and intent
+function determineWorkflow(intent: IntentType, input: string): WorkflowType {
   const mode = getMode();
+
+  // Casual chat always goes to chat handler
+  if (isCasualChat(input)) {
+    return 'chat';
+  }
+
+  // Simple questions go to ask handler
+  if (isSimpleQuestion(input) && intent === 'QUESTION') {
+    return 'ask_question';
+  }
 
   // Read-only modes route to ask_question workflow
   if (mode === 'ask' || mode === 'explain' || mode === 'review') {
@@ -105,7 +193,7 @@ function determineWorkflow(intent: IntentType, hasExistingIntent: boolean): Work
     return 'auto_execute';
   }
 
-  // Questions always go to ask workflow regardless of mode
+  // Questions in edit mode still get answered
   if (intent === 'QUESTION') {
     return 'ask_question';
   }
@@ -195,17 +283,36 @@ Working directory: ${session.workingDirectory}
 
 ${filesContext ? `Relevant files:\n${filesContext}` : ''}
 
-Execute this task completely. If it requires code changes, provide the file operations with full file content.
-If it's a question, answer it directly.
-Be decisive and thorough.`;
+Execute this task completely. For file operations, respond with JSON:
+{
+  "status": "success",
+  "files": [
+    {"path": "relative/path/to/file.ext", "operation": "create", "content": "full file content here"}
+  ],
+  "output": "Brief explanation of what was done"
+}
+
+For questions or explanations, respond with:
+{
+  "status": "success",
+  "output": "Your response here"
+}
+
+Be decisive and thorough. Always use relative paths from the working directory.`;
 
     const result = await execute({ instruction }, apiKey);
 
     if (result.success && result.output) {
-      const response = result.output as ResponseSchema;
+      // Try to parse as ResponseSchema first
+      let response = parseFileOperations(result.output);
+      
+      // If direct parsing failed, try the output object
+      if (!response && typeof result.output === 'object') {
+        response = result.output as ResponseSchema;
+      }
 
       // Check if there are file operations
-      if (response.files && response.files.length > 0) {
+      if (response && response.files && response.files.length > 0) {
         console.log(success(`Applying ${response.files.length} file(s)...`));
 
         let applied = 0;
@@ -213,14 +320,20 @@ Be decisive and thorough.`;
         
         for (const file of response.files) {
           try {
-            const opResult = applyFileOperation(file.operation, file.path, file.content, {
+            // Normalize the path
+            let filePath = file.path;
+            if (filePath.startsWith('./')) {
+              filePath = filePath.substring(2);
+            }
+            
+            const opResult = applyFileOperation(file.operation, filePath, file.content, {
               basePath: session.workingDirectory
             });
             if (opResult.success) {
-              console.log(success(`  ${file.operation}: ${file.path}`));
+              console.log(success(`  ${file.operation}: ${filePath}`));
               applied++;
             } else {
-              console.log(error(`  Failed ${file.path}: ${opResult.error}`));
+              console.log(error(`  Failed ${filePath}: ${opResult.error}`));
               failed++;
             }
           } catch (e: any) {
@@ -240,11 +353,17 @@ Be decisive and thorough.`;
       }
 
       // Show output/explanation
-      if (response.output) {
+      if (response && response.output) {
         console.log('');
         console.log(response.output);
-      } else if (response.error) {
+      } else if (response && response.error) {
         console.log(error(response.error));
+      } else if (!response) {
+        // No structured response, show raw output
+        const text = extractTextFromResponse(result.output);
+        if (text) {
+          console.log(text);
+        }
       }
     } else {
       console.log(error(`Failed: ${result.error || 'Unknown error'}`));
@@ -268,6 +387,9 @@ async function handleWorkflow(
     case 'slash_command':
       await executeCommand(parsed);
       return { handled: true };
+
+    case 'chat':
+      return handleChat(input);
 
     case 'ask_question':
       return handleAskQuestion(input);
@@ -316,6 +438,67 @@ async function handleWorkflow(
   }
 }
 
+// Handle casual chat - greetings, small talk
+async function handleChat(input: string): Promise<{ handled: boolean; message?: string }> {
+  try {
+    let apiKey: string;
+    try {
+      apiKey = await ensureAuthenticated();
+    } catch (authError: any) {
+      console.log(error(`Authentication required: ${authError?.message || 'Run zcode auth'}`));
+      return { handled: true };
+    }
+
+    if (!apiKey) {
+      console.log(error('No API key configured. Run "zcode auth" to set up.'));
+      return { handled: true };
+    }
+
+    // Simple chat prompt - no code context needed
+    const chatPrompt = `You are a friendly AI coding assistant. Respond naturally and briefly to casual conversation.
+Keep responses short (1-2 sentences). Be warm and helpful.
+If the user seems to want to start coding, suggest they describe their task.`;
+
+    const instruction = `${chatPrompt}
+
+User: ${input}
+
+Respond briefly and naturally:`;
+
+    console.log(dim('...'));
+    const result = await execute({ instruction, enforceSchema: false }, apiKey);
+
+    if (result.success && result.output) {
+      const text = extractTextFromResponse(result.output);
+      console.log(text);
+    } else {
+      // Fallback for chat errors - just be friendly
+      const greetings: Record<string, string> = {
+        'hi': 'Hey! What would you like to build today?',
+        'hello': 'Hello! Ready to code something awesome?',
+        'hey': 'Hey there! What can I help you with?',
+        'yo': 'Yo! What are we building?',
+        'sup': 'Not much! What are you working on?',
+        'thanks': 'You\'re welcome! Need anything else?',
+        'thank you': 'Happy to help! What\'s next?',
+        'bye': 'See you! Happy coding!',
+        'ok': 'Great! Let me know if you need anything.',
+        'cool': 'Awesome! What\'s next?',
+      };
+      
+      const lower = input.toLowerCase().trim().replace(/[!.,?]/g, '');
+      const response = greetings[lower] || 'Hey! Describe what you\'d like to build.';
+      console.log(response);
+    }
+
+    return { handled: true };
+  } catch (e: any) {
+    // Fallback on any error
+    console.log('Hey! What would you like to build today?');
+    return { handled: true };
+  }
+}
+
 // Main orchestration entry
 export async function orchestrate(input: string): Promise<OrchestrationResult> {
   const trimmed = input.trim();
@@ -342,10 +525,9 @@ export async function orchestrate(input: string): Promise<OrchestrationResult> {
     };
   }
 
-  // Free text - classify and capture
+  // Free text - classify and route
   const intent = classifyIntent(trimmed);
-  const hasExistingIntent = getIntent() !== null;
-  const workflow = determineWorkflow(intent, hasExistingIntent);
+  const workflow = determineWorkflow(intent, trimmed);
 
   const result = await handleWorkflow(workflow, trimmed, parsed, intent);
 
