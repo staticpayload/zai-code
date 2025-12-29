@@ -6,6 +6,39 @@ import { ensureAuthenticated } from './auth';
 import { buildSystemPrompt } from './mode_prompts';
 import { applyFileOperation } from './apply';
 
+// Helper to extract meaningful text from API response
+function extractTextFromResponse(response: unknown): string {
+  if (typeof response === 'string') {
+    // Strip markdown code blocks
+    let text = response;
+    text = text.replace(/```json\n?/gi, '').replace(/```\n?/g, '');
+
+    // Try to parse as JSON and extract explanation
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed.explanation) return parsed.explanation;
+      if (parsed.output) return parsed.output;
+      if (parsed.message) return parsed.message;
+      if (parsed.summary) return parsed.summary;
+      if (parsed.status === 'error' && parsed.explanation) return parsed.explanation;
+    } catch {
+      // Not JSON, return as-is
+    }
+    return text.trim();
+  }
+
+  if (typeof response === 'object' && response !== null) {
+    const obj = response as Record<string, unknown>;
+    if (obj.explanation) return String(obj.explanation);
+    if (obj.output) return String(obj.output);
+    if (obj.message) return String(obj.message);
+    if (obj.summary) return String(obj.summary);
+    return JSON.stringify(response, null, 2);
+  }
+
+  return String(response);
+}
+
 // Workflow types
 export type WorkflowType =
   | 'slash_command'
@@ -90,7 +123,7 @@ async function handleAskQuestion(input: string): Promise<{ handled: boolean; mes
       console.log(error(`Authentication required: ${authError?.message || 'Run zcode auth'}`));
       return { handled: true };
     }
-    
+
     if (!apiKey) {
       console.log(error('No API key configured. Run "zcode auth" to set up.'));
       return { handled: true };
@@ -110,32 +143,8 @@ Respond directly and concisely.`;
     const result = await execute({ instruction, enforceSchema: false }, apiKey);
 
     if (result.success && result.output) {
-      const response = result.output;
-      
-      // Handle string response
-      if (typeof response === 'string') {
-        console.log(response);
-      } else if (typeof response === 'object') {
-        const obj = response as { explanation?: string; message?: string; summary?: string; output?: string; issues?: unknown[] };
-        
-        // Try various output fields
-        if (obj.output) {
-          console.log(obj.output);
-        } else if (obj.explanation) {
-          console.log(obj.explanation);
-        } else if (obj.summary) {
-          console.log(obj.summary);
-          if (obj.issues && Array.isArray(obj.issues)) {
-            for (const issue of obj.issues as Array<{ severity?: string; description?: string }>) {
-              console.log(`  [${issue.severity || 'note'}] ${issue.description || ''}`);
-            }
-          }
-        } else if (obj.message) {
-          console.log(obj.message);
-        } else {
-          console.log(JSON.stringify(response, null, 2));
-        }
-      }
+      const text = extractTextFromResponse(result.output);
+      console.log(text);
     } else {
       console.log(error(`Failed: ${result.error || 'Unknown error'}`));
     }
@@ -157,7 +166,7 @@ async function handleAutoExecute(input: string): Promise<{ handled: boolean; mes
       console.log(error(`Authentication required: ${authError?.message || 'Run zcode auth'}`));
       return { handled: true };
     }
-    
+
     if (!apiKey) {
       console.log(error('No API key configured. Run "zcode auth" to set up.'));
       return { handled: true };
@@ -180,11 +189,11 @@ Be decisive and complete the task.`;
 
     if (result.success && result.output) {
       const response = result.output as ResponseSchema;
-      
+
       // Check if there are file operations
       if (response.files && response.files.length > 0) {
         console.log(success(`Applying ${response.files.length} file(s)...`));
-        
+
         for (const file of response.files) {
           try {
             const result = applyFileOperation(file.operation, file.path, file.content);
@@ -198,13 +207,12 @@ Be decisive and complete the task.`;
           }
         }
       }
-      
+
       // Show output
-      if (response.output) {
+      const text = extractTextFromResponse(result.output);
+      if (text && text !== '{}') {
         console.log('');
-        console.log(response.output);
-      } else if (typeof response === 'string') {
-        console.log(response);
+        console.log(text);
       }
     } else {
       console.log(error(`Failed: ${result.error || 'Unknown error'}`));
