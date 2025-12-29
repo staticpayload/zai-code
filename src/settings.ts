@@ -5,20 +5,64 @@ import * as os from 'os';
 const SETTINGS_FILE = path.join(os.homedir(), '.zai', 'settings.json');
 
 export interface Settings {
+  model: {
+    current: string;
+  };
   ui: {
     asciiLogo: 'on' | 'off';
     color: 'auto' | 'on' | 'off';
+    promptStyle: 'compact' | 'verbose';
+  };
+  execution: {
+    confirmationMode: 'strict' | 'normal';
+    maxPlanIterations: number;
+    allowShellExec: boolean;
+  };
+  context: {
+    scope: 'open' | 'touched' | 'full';
+    maxTokens: number;
+  };
+  debug: {
+    logging: boolean;
+    errorDetail: 'brief' | 'full';
+    dumpState: boolean;
   };
   firstRun: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
+  model: {
+    current: 'claude-sonnet-4-20250514',
+  },
   ui: {
     asciiLogo: 'on',
     color: 'auto',
+    promptStyle: 'compact',
+  },
+  execution: {
+    confirmationMode: 'strict',
+    maxPlanIterations: 5,
+    allowShellExec: false,
+  },
+  context: {
+    scope: 'open',
+    maxTokens: 50000,
+  },
+  debug: {
+    logging: false,
+    errorDetail: 'brief',
+    dumpState: false,
   },
   firstRun: true,
 };
+
+// Available models
+export const AVAILABLE_MODELS = [
+  'claude-sonnet-4-20250514',
+  'claude-3-5-sonnet-20241022',
+  'claude-3-5-haiku-20241022',
+  'claude-3-opus-20240229',
+];
 
 let cachedSettings: Settings | null = null;
 
@@ -28,8 +72,9 @@ export function loadSettings(): Settings {
   try {
     if (fs.existsSync(SETTINGS_FILE)) {
       const content = fs.readFileSync(SETTINGS_FILE, 'utf-8');
-      const parsed = JSON.parse(content) as Partial<Settings>;
-      cachedSettings = { ...DEFAULT_SETTINGS, ...parsed };
+      const loaded = JSON.parse(content);
+      // Deep merge with defaults
+      cachedSettings = deepMerge(DEFAULT_SETTINGS, loaded);
       return cachedSettings;
     }
   } catch {
@@ -38,6 +83,18 @@ export function loadSettings(): Settings {
 
   cachedSettings = { ...DEFAULT_SETTINGS };
   return cachedSettings;
+}
+
+function deepMerge<T>(defaults: T, overrides: Partial<T>): T {
+  const result = { ...defaults };
+  for (const key in overrides) {
+    if (overrides[key] !== null && typeof overrides[key] === 'object' && !Array.isArray(overrides[key])) {
+      (result as any)[key] = deepMerge((defaults as any)[key], overrides[key] as any);
+    } else if (overrides[key] !== undefined) {
+      (result as any)[key] = overrides[key];
+    }
+  }
+  return result;
 }
 
 export function saveSettings(settings: Settings): void {
@@ -53,30 +110,14 @@ export function getSetting<K extends keyof Settings>(key: K): Settings[K] {
   return loadSettings()[key];
 }
 
-export function setSetting<K extends keyof Settings>(key: K, value: Settings[K]): void {
-  const settings = loadSettings();
-  settings[key] = value;
-  saveSettings(settings);
+export function getModel(): string {
+  return loadSettings().model.current;
 }
 
-export function setNestedSetting(path: string, value: string): boolean {
+export function setModel(model: string): void {
   const settings = loadSettings();
-  const parts = path.split('.');
-
-  if (parts[0] === 'ui') {
-    if (parts[1] === 'asciiLogo' && (value === 'on' || value === 'off')) {
-      settings.ui.asciiLogo = value;
-      saveSettings(settings);
-      return true;
-    }
-    if (parts[1] === 'color' && (value === 'auto' || value === 'on' || value === 'off')) {
-      settings.ui.color = value;
-      saveSettings(settings);
-      return true;
-    }
-  }
-
-  return false;
+  settings.model.current = model;
+  saveSettings(settings);
 }
 
 export function markFirstRunComplete(): void {
@@ -93,10 +134,35 @@ export function shouldShowColor(): boolean {
   const settings = loadSettings();
   if (settings.ui.color === 'off') return false;
   if (settings.ui.color === 'on') return true;
-  // auto: check terminal
   return process.stdout.isTTY && process.env.TERM !== 'dumb';
 }
 
 export function shouldShowLogo(): boolean {
   return loadSettings().ui.asciiLogo === 'on';
+}
+
+export function setNestedSetting(path: string, value: string): boolean {
+  const settings = loadSettings();
+  const parts = path.split('.');
+
+  // Handle all nested settings
+  try {
+    let obj: any = settings;
+    for (let i = 0; i < parts.length - 1; i++) {
+      obj = obj[parts[i]];
+      if (!obj) return false;
+    }
+    const key = parts[parts.length - 1];
+
+    // Type coercion
+    if (value === 'true') obj[key] = true;
+    else if (value === 'false') obj[key] = false;
+    else if (!isNaN(Number(value))) obj[key] = Number(value);
+    else obj[key] = value;
+
+    saveSettings(settings);
+    return true;
+  } catch {
+    return false;
+  }
 }

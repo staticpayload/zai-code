@@ -38,6 +38,7 @@ exports.executeCommand = executeCommand;
 exports.getAvailableCommands = getAvailableCommands;
 const session_1 = require("./session");
 const settings_1 = require("./settings");
+const settings_menu_1 = require("./settings_menu");
 const shell_1 = require("./shell");
 const workspace_model_1 = require("./workspace_model");
 const auth_1 = require("./auth");
@@ -99,21 +100,18 @@ const handlers = {
         (0, rollback_1.clearUndoHistory)();
         console.log('Reset.');
     },
-    settings: (ctx) => {
-        const settings = (0, settings_1.loadSettings)();
+    settings: async (ctx) => {
         if (ctx.args.length === 0) {
-            // Show current settings
-            console.log('Settings:');
-            console.log(`  ui.asciiLogo = ${settings.ui.asciiLogo}`);
-            console.log(`  ui.color = ${settings.ui.color}`);
+            // Open interactive menu
+            await (0, settings_menu_1.openSettingsMenu)();
             return;
         }
-        // Parse key=value
+        // Quick set via command line
         const arg = ctx.args.join(' ');
         const match = arg.match(/^(\S+)\s*=\s*(\S+)$/);
         if (!match) {
             console.log('Usage: /settings [key = value]');
-            console.log('Keys: ui.asciiLogo, ui.color');
+            console.log('Or run /settings to open interactive menu.');
             return;
         }
         const [, key, value] = match;
@@ -122,8 +120,7 @@ const handlers = {
             console.log(`Set ${key} = ${value}`);
         }
         else {
-            console.log((0, ui_1.error)(`Invalid setting: ${key} = ${value}`));
-            console.log('Valid: ui.asciiLogo = on|off, ui.color = auto|on|off');
+            console.log((0, ui_1.error)(`Invalid: ${key} = ${value}`));
         }
     },
     context: () => {

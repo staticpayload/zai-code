@@ -15,6 +15,7 @@ import {
   getStepProgress,
 } from './session';
 import { loadSettings, setNestedSetting } from './settings';
+import { openSettingsMenu } from './settings_menu';
 import { executeCommand as execShellCommand, validateCommand, getAllowedCommands, ExecResult } from './shell';
 import { getWorkspace } from './workspace_model';
 import { ensureAuthenticated, hasValidCredentials } from './auth';
@@ -97,24 +98,20 @@ const handlers: Record<string, CommandHandler> = {
     clearUndoHistory();
     console.log('Reset.');
   },
-  settings: (ctx) => {
-    const settings = loadSettings();
-
+  settings: async (ctx) => {
     if (ctx.args.length === 0) {
-      // Show current settings
-      console.log('Settings:');
-      console.log(`  ui.asciiLogo = ${settings.ui.asciiLogo}`);
-      console.log(`  ui.color = ${settings.ui.color}`);
+      // Open interactive menu
+      await openSettingsMenu();
       return;
     }
 
-    // Parse key=value
+    // Quick set via command line
     const arg = ctx.args.join(' ');
     const match = arg.match(/^(\S+)\s*=\s*(\S+)$/);
 
     if (!match) {
       console.log('Usage: /settings [key = value]');
-      console.log('Keys: ui.asciiLogo, ui.color');
+      console.log('Or run /settings to open interactive menu.');
       return;
     }
 
@@ -124,8 +121,7 @@ const handlers: Record<string, CommandHandler> = {
     if (success) {
       console.log(`Set ${key} = ${value}`);
     } else {
-      console.log(error(`Invalid setting: ${key} = ${value}`));
-      console.log('Valid: ui.asciiLogo = on|off, ui.color = auto|on|off');
+      console.log(error(`Invalid: ${key} = ${value}`));
     }
   },
   context: () => {
