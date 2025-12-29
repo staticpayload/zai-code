@@ -179,7 +179,7 @@ const handlers = {
         }
         console.log('Plan generated.');
         console.log(`Steps: ${result.plan?.length || 0}`);
-        console.log('Use /generate to proceed.');
+        console.log((0, ui_1.hint)('/generate'));
     },
     generate: async () => {
         console.log('Generating...');
@@ -191,7 +191,7 @@ const handlers = {
         console.log('Changes generated.');
         const fileCount = (result.changes?.files?.length || 0) + (result.changes?.diffs?.length || 0);
         console.log(`Files: ${fileCount}`);
-        console.log('Use /diff to review.');
+        console.log((0, ui_1.hint)('/diff'));
     },
     diff: () => {
         const session = (0, session_1.getSession)();
@@ -234,7 +234,7 @@ const handlers = {
         // Check dry run mode
         if (session.dryRun) {
             console.log((0, ui_1.error)('Dry-run mode. Apply blocked.'));
-            console.log('Use /dry-run off to disable.');
+            console.log((0, ui_1.hint)('/dry-run off'));
             return;
         }
         // Warn on dirty git
@@ -364,7 +364,7 @@ const handlers = {
         console.log('');
         (0, task_runner_1.printProgress)();
         console.log('');
-        console.log('Use /step to plan current step, or /next to advance.');
+        console.log((0, ui_1.hint)('/step'));
     },
     step: async () => {
         const step = (0, session_1.getCurrentStep)();
@@ -379,7 +379,7 @@ const handlers = {
             return;
         }
         console.log((0, ui_1.success)(result.message));
-        console.log('Use /generate to create changes, then /diff and /apply.');
+        console.log((0, ui_1.hint)('/generate'));
     },
     next: () => {
         const result = (0, task_runner_1.completeCurrentStep)();

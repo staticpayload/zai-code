@@ -186,7 +186,7 @@ const handlers: Record<string, CommandHandler> = {
 
     console.log('Plan generated.');
     console.log(`Steps: ${result.plan?.length || 0}`);
-    console.log('Use /generate to proceed.');
+    console.log(hint('/generate'));
   },
   generate: async () => {
     console.log('Generating...');
@@ -200,56 +200,56 @@ const handlers: Record<string, CommandHandler> = {
     console.log('Changes generated.');
     const fileCount = (result.changes?.files?.length || 0) + (result.changes?.diffs?.length || 0);
     console.log(`Files: ${fileCount}`);
-    console.log('Use /diff to review.');
+    console.log(hint('/diff'));
   },
   diff: () => {
-  const session = getSession();
+    const session = getSession();
 
-  // Check if there's a diff to display
-  if (!session.lastDiff) {
-    console.log('Nothing to review.');
-    return;
-  }
-
-  const response = session.lastDiff;
-
-  // Display file operations if present
-  if (response.files && response.files.length > 0) {
-    for (const file of response.files) {
-      console.log(`--- ${file.operation}: ${file.path} ---`);
-      if (file.content && file.operation !== 'delete') {
-        console.log(file.content);
-      }
-      console.log('');
+    // Check if there's a diff to display
+    if (!session.lastDiff) {
+      console.log('Nothing to review.');
+      return;
     }
-  }
 
-  // Display diffs if present
-  if (response.diffs && response.diffs.length > 0) {
-    for (const diff of response.diffs) {
-      console.log(`--- ${diff.file} ---`);
-      for (const hunk of diff.hunks) {
-        console.log(`@@ -${hunk.start},${hunk.end - hunk.start + 1} @@`);
-        console.log(hunk.content);
+    const response = session.lastDiff;
+
+    // Display file operations if present
+    if (response.files && response.files.length > 0) {
+      for (const file of response.files) {
+        console.log(`--- ${file.operation}: ${file.path} ---`);
+        if (file.content && file.operation !== 'delete') {
+          console.log(file.content);
+        }
+        console.log('');
       }
-      console.log('');
     }
-  }
 
-  // If neither files nor diffs present
-  if ((!response.files || response.files.length === 0) &&
+    // Display diffs if present
+    if (response.diffs && response.diffs.length > 0) {
+      for (const diff of response.diffs) {
+        console.log(`--- ${diff.file} ---`);
+        for (const hunk of diff.hunks) {
+          console.log(`@@ -${hunk.start},${hunk.end - hunk.start + 1} @@`);
+          console.log(hunk.content);
+        }
+        console.log('');
+      }
+    }
+
+    // If neither files nor diffs present
+    if ((!response.files || response.files.length === 0) &&
       (!response.diffs || response.diffs.length === 0)) {
-    console.log('No file changes in last response.');
-    return;
-  }
-},
+      console.log('No file changes in last response.');
+      return;
+    }
+  },
   apply: () => {
     const session = getSession();
 
     // Check dry run mode
     if (session.dryRun) {
       console.log(error('Dry-run mode. Apply blocked.'));
-      console.log('Use /dry-run off to disable.');
+      console.log(hint('/dry-run off'));
       return;
     }
 
@@ -274,7 +274,7 @@ const handlers: Record<string, CommandHandler> = {
 
     // Check if there are actual file operations
     if ((!actions.files || actions.files.length === 0) &&
-        (!actions.diffs || actions.diffs.length === 0)) {
+      (!actions.diffs || actions.diffs.length === 0)) {
       console.log('No file changes to apply.');
       return;
     }
@@ -305,44 +305,44 @@ const handlers: Record<string, CommandHandler> = {
     console.log(`Root: ${ws.getRoot()}`);
   },
   doctor: async () => {
-  console.log('System check...');
-  console.log('');
+    console.log('System check...');
+    console.log('');
 
-  // Check 1: API key
-  const hasKey = await hasValidCredentials();
-  console.log(`API key: ${hasKey ? success('configured') : error('missing')}`);
+    // Check 1: API key
+    const hasKey = await hasValidCredentials();
+    console.log(`API key: ${hasKey ? success('configured') : error('missing')}`);
 
-  // Check 2: Config directory
-  const configExists = fs.existsSync(path.join(os.homedir(), '.zai'));
-  console.log(`Config dir: ${configExists ? success('exists') : error('missing')}`);
+    // Check 2: Config directory
+    const configExists = fs.existsSync(path.join(os.homedir(), '.zai'));
+    console.log(`Config dir: ${configExists ? success('exists') : error('missing')}`);
 
-  // Check 3: Working directory writable
-  const session = getSession();
-  let writable = false;
-  try {
-    const testFile = path.join(session.workingDirectory, '.zai-test');
-    fs.writeFileSync(testFile, 'test');
-    fs.unlinkSync(testFile);
-    writable = true;
-  } catch {
-    writable = false;
-  }
-  console.log(`Workspace: ${writable ? success('writable') : error('read-only')}`);
+    // Check 3: Working directory writable
+    const session = getSession();
+    let writable = false;
+    try {
+      const testFile = path.join(session.workingDirectory, '.zai-test');
+      fs.writeFileSync(testFile, 'test');
+      fs.unlinkSync(testFile);
+      writable = true;
+    } catch {
+      writable = false;
+    }
+    console.log(`Workspace: ${writable ? success('writable') : error('read-only')}`);
 
-  // Check 4: Node version
-  const nodeVersion = process.version;
-  const major = parseInt(nodeVersion.slice(1).split('.')[0], 10);
-  console.log(`Node.js: ${major >= 18 ? success(nodeVersion) : error(`${nodeVersion} (requires 18+)`)}`);
+    // Check 4: Node version
+    const nodeVersion = process.version;
+    const major = parseInt(nodeVersion.slice(1).split('.')[0], 10);
+    console.log(`Node.js: ${major >= 18 ? success(nodeVersion) : error(`${nodeVersion} (requires 18+)`)}`);
 
-  // Summary
-  console.log('');
-  const allGood = hasKey && configExists && writable && major >= 18;
-  if (allGood) {
-    console.log(success('All checks passed.'));
-  } else {
-    console.log(error('Some checks failed.'));
-  }
-},
+    // Summary
+    console.log('');
+    const allGood = hasKey && configExists && writable && major >= 18;
+    if (allGood) {
+      console.log(success('All checks passed.'));
+    } else {
+      console.log(error('Some checks failed.'));
+    }
+  },
   exit: () => { process.exit(0); },
   exec: (ctx) => {
     const command = ctx.args.join(' ');
@@ -397,7 +397,7 @@ const handlers: Record<string, CommandHandler> = {
     console.log('');
     printProgress();
     console.log('');
-    console.log('Use /step to plan current step, or /next to advance.');
+    console.log(hint('/step'));
   },
   step: async () => {
     const step = getCurrentStep();
@@ -415,7 +415,7 @@ const handlers: Record<string, CommandHandler> = {
     }
 
     console.log(success(result.message));
-    console.log('Use /generate to create changes, then /diff and /apply.');
+    console.log(hint('/generate'));
   },
   next: () => {
     const result = completeCurrentStep();

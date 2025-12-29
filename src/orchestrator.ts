@@ -1,15 +1,15 @@
 import { parseInput, executeCommand, ParsedCommand } from './commands';
 import { getSession, setIntent, getIntent, IntentType, setIntentType } from './session';
+import { hint, dim } from './ui';
 
-// Workflow types - what action to take
+// Workflow types
 export type WorkflowType =
-  | 'slash_command'  // Execute slash command directly
-  | 'capture_intent' // Store intent for later /plan
-  | 'append_context' // Add to current intent
-  | 'confirm_action' // Handle yes/no confirmation
-  | 'ignore';        // Do nothing
+  | 'slash_command'
+  | 'capture_intent'
+  | 'append_context'
+  | 'confirm_action'
+  | 'ignore';
 
-// Orchestration result
 export interface OrchestrationResult {
   inputType: 'slash' | 'free_text';
   intent: IntentType;
@@ -18,70 +18,46 @@ export interface OrchestrationResult {
   message?: string;
 }
 
-// Classify free text intent (rule-based, no model calls)
+// Intent classification (rule-based, no model)
 function classifyIntent(input: string): IntentType {
   const lower = input.toLowerCase().trim();
 
-  // QUESTION patterns - explain, clarify, what/why/how questions
-  const questionPatterns = [
-    /^(what|why|how|when|where|who|explain|clarify|describe|tell me)/i,
-    /\?$/,
-    /^(is|are|can|could|would|should|do|does|did|has|have|will)\s/i,
-    /(what is|what are|what does|how does|how do|how to|why does|why is)/i,
-  ];
-  if (questionPatterns.some(p => p.test(lower))) {
+  // QUESTION
+  if (/^(what|why|how|when|where|who|explain|clarify|describe|tell me)/i.test(lower) ||
+    /\?$/.test(lower) ||
+    /^(is|are|can|could|would|should|do|does|did|has|have|will)\s/i.test(lower)) {
     return 'QUESTION';
   }
 
-  // DEBUG patterns - fix, debug, error, bug, issue, broken, failing
-  const debugPatterns = [
-    /(fix|debug|error|bug|issue|broken|failing|crash|exception|problem|wrong|doesn'?t work|not working)/i,
-    /(resolve|troubleshoot|diagnose|investigate)/i,
-  ];
-  if (debugPatterns.some(p => p.test(lower))) {
+  // DEBUG
+  if (/(fix|debug|error|bug|issue|broken|failing|crash|exception|problem|wrong|doesn'?t work|not working)/i.test(lower)) {
     return 'DEBUG';
   }
 
-  // REFACTOR patterns - refactor, rename, reorganize, extract, move, restructure
-  const refactorPatterns = [
-    /(refactor|rename|reorganize|restructure|extract|move|split|merge|consolidate)/i,
-    /(clean up|cleanup|simplify|optimize|improve structure)/i,
-  ];
-  if (refactorPatterns.some(p => p.test(lower))) {
+  // REFACTOR
+  if (/(refactor|rename|reorganize|restructure|extract|move|split|merge|consolidate|clean up|cleanup|simplify)/i.test(lower)) {
     return 'REFACTOR';
   }
 
-  // REVIEW patterns - review, analyze, audit, check, inspect, look at
-  const reviewPatterns = [
-    /(review|analyze|audit|check|inspect|examine|assess|evaluate)/i,
-    /(look at|understand|read|show me)/i,
-  ];
-  if (reviewPatterns.some(p => p.test(lower))) {
+  // REVIEW
+  if (/(review|analyze|audit|check|inspect|examine|assess|evaluate|look at|understand|read|show me)/i.test(lower)) {
     return 'REVIEW';
   }
 
-  // CODE_EDIT patterns - add, create, implement, update, change, modify, write
-  const codeEditPatterns = [
-    /(add|create|implement|update|change|modify|write|build|make|generate)/i,
-    /(new|feature|function|component|class|method|file|module)/i,
-    /(edit|insert|append|remove|delete|replace)/i,
-  ];
-  if (codeEditPatterns.some(p => p.test(lower))) {
+  // CODE_EDIT
+  if (/(add|create|implement|update|change|modify|write|build|make|generate|new|feature|function|component|edit|insert|append|remove|delete|replace)/i.test(lower)) {
     return 'CODE_EDIT';
   }
 
-  // Default: COMMAND (unclear, may need clarification)
   return 'COMMAND';
 }
 
-// Determine workflow based on intent
+// Determine workflow
 function determineWorkflow(intent: IntentType, hasExistingIntent: boolean): WorkflowType {
-  // All intent types map to capture_intent for now
-  // The intent type is stored separately for later use
   return 'capture_intent';
 }
 
-// Handle the workflow
+// Handle workflow
 async function handleWorkflow(
   workflow: WorkflowType,
   input: string,
@@ -96,36 +72,43 @@ async function handleWorkflow(
     case 'capture_intent':
       setIntent(input);
       setIntentType(intent);
-      console.log(`Intent: ${intent}`);
-      console.log('Use /plan to proceed.');
+      // Clear, minimal output with next action
+      const intentLabel = intent.toLowerCase().replace('_', ' ');
+      console.log(`${dim('intent:')} ${intentLabel}`);
+      console.log(hint('/plan'));
       return { handled: true };
 
     case 'append_context':
       const existing = getIntent();
       if (existing) {
         setIntent(`${existing}\n\nClarification: ${input}`);
-        return { handled: true, message: 'Context appended to intent.' };
+        console.log(dim('Context updated.'));
+        console.log(hint('/plan'));
+        return { handled: true };
       }
       setIntent(input);
-      return { handled: true, message: 'Intent recorded. Use /plan to proceed.' };
+      console.log(dim('Intent captured.'));
+      console.log(hint('/plan'));
+      return { handled: true };
 
     case 'confirm_action':
       const session = getSession();
       if (session.pendingActions) {
-        // There are pending actions - user might want to apply
-        return { handled: true, message: 'Pending changes exist. Use /apply to execute or /diff to review.' };
+        console.log(hint('/diff or /apply'));
+        return { handled: true };
       }
-      return { handled: true, message: 'Nothing to confirm.' };
+      console.log(dim('Nothing pending.'));
+      return { handled: true };
 
     case 'ignore':
-      return { handled: true, message: 'Cancelled.' };
+      return { handled: true };
 
     default:
       return { handled: false };
   }
 }
 
-// Main orchestration entry point
+// Main orchestration entry
 export async function orchestrate(input: string): Promise<OrchestrationResult> {
   const trimmed = input.trim();
 
@@ -138,32 +121,25 @@ export async function orchestrate(input: string): Promise<OrchestrationResult> {
     };
   }
 
-  // Parse input
   const parsed = parseInput(trimmed);
 
-  // Slash commands bypass intent detection
+  // Slash commands
   if (parsed.isSlashCommand) {
     await executeCommand(parsed);
     return {
       inputType: 'slash',
-      intent: 'COMMAND', // Not classified for slash commands
+      intent: 'COMMAND',
       workflow: 'slash_command',
       handled: true,
     };
   }
 
-  // Free text goes through intent classification
+  // Free text - classify and capture
   const intent = classifyIntent(trimmed);
   const hasExistingIntent = getIntent() !== null;
   const workflow = determineWorkflow(intent, hasExistingIntent);
 
-  // Execute workflow
   const result = await handleWorkflow(workflow, trimmed, parsed, intent);
-
-  // Print message if any
-  if (result.message) {
-    console.log(result.message);
-  }
 
   return {
     inputType: 'free_text',

@@ -7,7 +7,7 @@ import { applyResponse } from './apply';
 import { collectWorkspace, buildContextString } from './workspace';
 import { getSession } from './session';
 import { getWorkspace } from './workspace_model';
-import { renderStartup, renderStatus, renderStatusBar, getWarnings, dim } from './ui';
+import { renderStartup, dim } from './ui';
 import { markFirstRunComplete, isFirstRun } from './settings';
 import * as path from 'path';
 
@@ -29,27 +29,14 @@ async function handleDefault(): Promise<void> {
   // Get project name from directory
   const projectName = path.basename(session.workingDirectory);
 
-  // Render startup
+  // Render startup - minimal
   console.log(renderStartup(projectName));
-  console.log(renderStatus(session));
-  console.log(renderStatusBar(session));
-
-  // Show warnings
-  const warnings = getWarnings(session);
-  if (warnings.length > 0) {
-    console.log('');
-    for (const w of warnings) {
-      console.log(dim(w));
-    }
-  }
 
   // Restored message
   if (restored) {
-    console.log('');
     console.log(dim('Session restored.'));
+    console.log('');
   }
-
-  console.log('');
 
   // Mark first run complete
   if (isFirstRun()) {
@@ -124,19 +111,17 @@ async function handleDoctor(): Promise<void> {
   console.log(`Node.js: ${process.version}`);
   console.log(`Platform: ${process.platform}`);
 
-  // Check config directory
   const fs = await import('fs');
-  const path = await import('path');
+  const pathModule = await import('path');
   const os = await import('os');
-  const configExists = fs.existsSync(path.join(os.homedir(), '.zai'));
+  const configExists = fs.existsSync(pathModule.join(os.homedir(), '.zai'));
   console.log(`Config dir: ${configExists ? 'exists' : 'missing'}`);
 
-  // Check working directory writable
   const { getSession } = await import('./session');
   const session = getSession();
   let writable = false;
   try {
-    const testFile = path.join(session.workingDirectory, '.zai-test');
+    const testFile = pathModule.join(session.workingDirectory, '.zai-test');
     fs.writeFileSync(testFile, 'test');
     fs.unlinkSync(testFile);
     writable = true;
@@ -145,7 +130,6 @@ async function handleDoctor(): Promise<void> {
   }
   console.log(`Workspace: ${writable ? 'writable' : 'read-only'}`);
 
-  // Summary
   console.log('');
   const allGood = hasKey && configExists && writable;
   if (allGood) {
