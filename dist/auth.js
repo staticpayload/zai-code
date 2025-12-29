@@ -121,8 +121,10 @@ async function httpsGet(url, headers) {
 async function validateApiKey(key) {
     try {
         const config = (0, config_1.loadConfig)();
-        const response = await httpsGet(`${config.api.baseUrl}models`, {
-            'x-api-key': key,
+        // Z.ai (Zhipu AI) international coding API
+        const baseUrl = config.api?.baseUrl || 'https://api.z.ai/api/coding/paas/v4/';
+        const response = await httpsGet(`${baseUrl}models`, {
+            'Authorization': `Bearer ${key}`,
         });
         return response.statusCode >= 200 && response.statusCode < 300;
     }
@@ -183,34 +185,59 @@ async function runOnboarding() {
         // Save to file
         await setApiKey(trimmedKey);
         console.log('✓ Saved to ~/.zai/auth.json');
-        // Add to shell profile
-        const shellProfile = path.join(os.homedir(), '.zshrc');
-        const exportLine = `export Z_KEY="${trimmedKey}"`;
-        try {
-            let content = '';
-            if (fs.existsSync(shellProfile)) {
-                content = fs.readFileSync(shellProfile, 'utf-8');
-            }
-            // Check if already exists
-            if (content.includes('export Z_KEY=')) {
-                // Replace existing
-                content = content.replace(/export Z_KEY=.*$/m, exportLine);
-            }
-            else {
-                // Append
-                content = content.trimEnd() + '\n\n# Z.ai CLI\n' + exportLine + '\n';
-            }
-            fs.writeFileSync(shellProfile, content);
-            console.log('✓ Added Z_KEY to ~/.zshrc');
+        // Platform-specific shell profile setup
+        const isWindows = process.platform === 'win32';
+        if (isWindows) {
+            // On Windows, guide user to set environment variable
             console.log('');
-            console.log('Run this to activate:');
-            console.log('  source ~/.zshrc');
+            console.log('To set Z_KEY permanently on Windows:');
+            console.log('  1. Open System Properties > Environment Variables');
+            console.log('  2. Add new User variable: Z_KEY');
+            console.log(`  3. Value: ${trimmedKey.substring(0, 8)}...`);
+            console.log('');
+            console.log('Or run in PowerShell (current session only):');
+            console.log(`  $env:Z_KEY="${trimmedKey}"`);
             console.log('');
         }
-        catch (e) {
-            console.log('Could not update ~/.zshrc. Set Z_KEY manually:');
-            console.log(`  export Z_KEY="${trimmedKey}"`);
-            console.log('');
+        else {
+            // Unix-like systems - try to add to shell profile
+            const shellProfiles = [
+                path.join(os.homedir(), '.zshrc'),
+                path.join(os.homedir(), '.bashrc'),
+                path.join(os.homedir(), '.bash_profile'),
+            ];
+            const exportLine = `export Z_KEY="${trimmedKey}"`;
+            let updated = false;
+            for (const shellProfile of shellProfiles) {
+                try {
+                    if (fs.existsSync(shellProfile)) {
+                        let content = fs.readFileSync(shellProfile, 'utf-8');
+                        // Check if already exists
+                        if (content.includes('export Z_KEY=')) {
+                            content = content.replace(/export Z_KEY=.*$/m, exportLine);
+                        }
+                        else {
+                            content = content.trimEnd() + '\n\n# Z.ai CLI\n' + exportLine + '\n';
+                        }
+                        fs.writeFileSync(shellProfile, content);
+                        console.log(`✓ Added Z_KEY to ${path.basename(shellProfile)}`);
+                        console.log('');
+                        console.log('Run this to activate:');
+                        console.log(`  source ${shellProfile}`);
+                        console.log('');
+                        updated = true;
+                        break;
+                    }
+                }
+                catch {
+                    // Try next profile
+                }
+            }
+            if (!updated) {
+                console.log('Set Z_KEY in your shell profile:');
+                console.log(`  export Z_KEY="${trimmedKey}"`);
+                console.log('');
+            }
         }
         return;
     }

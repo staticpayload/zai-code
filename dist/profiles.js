@@ -8,18 +8,8 @@ exports.getActiveProfileName = getActiveProfileName;
 const settings_1 = require("./settings");
 exports.BUILT_IN_PROFILES = [
     {
-        name: 'safe',
-        description: 'Conservative settings, strict confirmation',
-        settings: {
-            model: 'glm-4.7',
-            contextScope: 'open',
-            confirmationMode: 'strict',
-            maxPlanIterations: 3,
-        },
-    },
-    {
-        name: 'balanced',
-        description: 'Default settings for typical use',
+        name: 'quality',
+        description: 'Best quality, flagship model',
         settings: {
             model: 'glm-4.7',
             contextScope: 'touched',
@@ -29,9 +19,9 @@ exports.BUILT_IN_PROFILES = [
     },
     {
         name: 'fast',
-        description: 'Faster execution, less confirmation',
+        description: 'Fast & efficient responses',
         settings: {
-            model: 'glm-4.5',
+            model: 'glm-4.5-air',
             contextScope: 'open',
             confirmationMode: 'normal',
             maxPlanIterations: 3,

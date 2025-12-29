@@ -47,6 +47,7 @@ exports.CONFIG_PATH = path.join(exports.CONFIG_DIR, 'config.json');
 exports.STATE_PATH = path.join(exports.CONFIG_DIR, 'state.json');
 const DEFAULT_CONFIG = {
     api: {
+        // Z.ai (Zhipu AI) international API - coding endpoint
         baseUrl: 'https://api.z.ai/api/coding/paas/v4/',
     },
 };

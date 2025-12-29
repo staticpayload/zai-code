@@ -77,7 +77,28 @@ async function runPlannerLoop() {
             needsConfirmation: false,
         };
     }
-    const apiKey = await (0, auth_1.ensureAuthenticated)();
+    let apiKey;
+    try {
+        apiKey = await (0, auth_1.ensureAuthenticated)();
+    }
+    catch (e) {
+        return {
+            success: false,
+            iterations: 0,
+            plan: null,
+            message: `Authentication failed: ${e?.message || e}`,
+            needsConfirmation: false,
+        };
+    }
+    if (!apiKey) {
+        return {
+            success: false,
+            iterations: 0,
+            plan: null,
+            message: 'No API key configured. Run /doctor or zcode auth.',
+            needsConfirmation: false,
+        };
+    }
     let iterations = 0;
     let currentPlan = null;
     // Build context from workspace
@@ -180,7 +201,28 @@ async function runGenerateLoop() {
             needsConfirmation: false,
         };
     }
-    const apiKey = await (0, auth_1.ensureAuthenticated)();
+    let apiKey;
+    try {
+        apiKey = await (0, auth_1.ensureAuthenticated)();
+    }
+    catch (e) {
+        return {
+            success: false,
+            iterations: 0,
+            changes: null,
+            message: `Authentication failed: ${e?.message || e}`,
+            needsConfirmation: false,
+        };
+    }
+    if (!apiKey) {
+        return {
+            success: false,
+            iterations: 0,
+            changes: null,
+            message: 'No API key configured. Run /doctor or zcode auth.',
+            needsConfirmation: false,
+        };
+    }
     let iterations = 0;
     let currentChanges = null;
     // Build context from workspace

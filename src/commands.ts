@@ -157,23 +157,27 @@ const handlers: Record<string, CommandHandler> = {
   },
   mode: (ctx) => {
     const newMode = ctx.args[0]?.toLowerCase();
-    const validModes = ['edit', 'ask', 'explain', 'review', 'debug'];
+    const validModes = ['auto', 'edit', 'ask', 'explain', 'review', 'debug'];
 
     if (!newMode) {
       const session = getSession();
       console.log(`Current mode: ${session.mode}`);
-      console.log('Available modes: edit, ask, explain, review, debug');
+      console.log('Available modes: auto (YOLO), edit, ask, explain, review, debug');
       return;
     }
 
     if (!validModes.includes(newMode)) {
       console.log(`Invalid mode: ${newMode}`);
-      console.log('Available modes: edit, ask, explain, review, debug');
+      console.log('Available modes: auto (YOLO), edit, ask, explain, review, debug');
       return;
     }
 
     setMode(newMode as SessionMode);
-    console.log(success(`Mode set to: ${newMode}`));
+    if (newMode === 'auto') {
+      console.log(success('YOLO mode enabled - executing tasks directly without confirmations'));
+    } else {
+      console.log(success(`Mode set to: ${newMode}`));
+    }
   },
   ask: () => {
     setMode('ask');
@@ -226,31 +230,66 @@ const handlers: Record<string, CommandHandler> = {
     console.log('Usage: /model [list | set <model-id>]');
   },
   plan: async () => {
-    console.log('Planning...');
-    const result = await runPlannerLoop();
-
-    if (!result.success) {
-      console.log(error(result.message));
+    const intent = getIntent();
+    if (!intent) {
+      console.log(error('No task set. Type a task first, then use /plan.'));
+      console.log(hint('Example: "add error handling to auth.ts"'));
       return;
     }
+    
+    console.log(info(`Planning: ${intent.substring(0, 50)}${intent.length > 50 ? '...' : ''}`));
+    
+    try {
+      const result = await runPlannerLoop();
 
-    console.log('Plan generated.');
-    console.log(`Steps: ${result.plan?.length || 0}`);
-    console.log(hint('/generate'));
+      if (!result.success) {
+        console.log(error(result.message));
+        return;
+      }
+
+      console.log(success('Plan generated.'));
+      if (result.plan && result.plan.length > 0) {
+        console.log(`Steps (${result.plan.length}):`);
+        for (const step of result.plan) {
+          console.log(`  ${step.id}. ${step.description}`);
+        }
+      }
+      console.log(hint('/generate to create changes'));
+    } catch (e: any) {
+      console.log(error(`Planning failed: ${e?.message || e}`));
+    }
   },
   generate: async () => {
-    console.log('Generating...');
-    const result = await runGenerateLoop();
-
-    if (!result.success) {
-      console.log(error(result.message));
+    const session = getSession();
+    if (!session.lastPlan || session.lastPlan.length === 0) {
+      console.log(error('No plan exists. Use /plan first.'));
       return;
     }
+    
+    console.log(info('Generating changes...'));
+    
+    try {
+      const result = await runGenerateLoop();
 
-    console.log('Changes generated.');
-    const fileCount = (result.changes?.files?.length || 0) + (result.changes?.diffs?.length || 0);
-    console.log(`Files: ${fileCount}`);
-    console.log(hint('/diff'));
+      if (!result.success) {
+        console.log(error(result.message));
+        return;
+      }
+
+      console.log(success('Changes generated.'));
+      const fileCount = (result.changes?.files?.length || 0) + (result.changes?.diffs?.length || 0);
+      if (fileCount > 0) {
+        console.log(`Files affected: ${fileCount}`);
+        if (result.changes?.files) {
+          for (const f of result.changes.files) {
+            console.log(`  ${f.operation}: ${f.path}`);
+          }
+        }
+      }
+      console.log(hint('/diff to review, /apply to execute'));
+    } catch (e: any) {
+      console.log(error(`Generation failed: ${e?.message || e}`));
+    }
   },
   diff: () => {
     const session = getSession();
@@ -355,43 +394,9 @@ const handlers: Record<string, CommandHandler> = {
     console.log(`Root: ${ws.getRoot()}`);
   },
   doctor: async () => {
-    console.log('System check...');
-    console.log('');
-
-    // Check 1: API key
-    const hasKey = await hasValidCredentials();
-    console.log(`API key: ${hasKey ? success('configured') : error('missing')}`);
-
-    // Check 2: Config directory
-    const configExists = fs.existsSync(path.join(os.homedir(), '.zai'));
-    console.log(`Config dir: ${configExists ? success('exists') : error('missing')}`);
-
-    // Check 3: Working directory writable
-    const session = getSession();
-    let writable = false;
-    try {
-      const testFile = path.join(session.workingDirectory, '.zai-test');
-      fs.writeFileSync(testFile, 'test');
-      fs.unlinkSync(testFile);
-      writable = true;
-    } catch {
-      writable = false;
-    }
-    console.log(`Workspace: ${writable ? success('writable') : error('read-only')}`);
-
-    // Check 4: Node version
-    const nodeVersion = process.version;
-    const major = parseInt(nodeVersion.slice(1).split('.')[0], 10);
-    console.log(`Node.js: ${major >= 18 ? success(nodeVersion) : error(`${nodeVersion} (requires 18+)`)}`);
-
-    // Summary
-    console.log('');
-    const allGood = hasKey && configExists && writable && major >= 18;
-    if (allGood) {
-      console.log(success('All checks passed.'));
-    } else {
-      console.log(error('Some checks failed.'));
-    }
+    const { runDiagnostics, formatDiagnostics } = await import('./doctor');
+    const results = await runDiagnostics();
+    console.log(formatDiagnostics(results));
   },
   exit: () => { process.exit(0); },
   exec: (ctx) => {

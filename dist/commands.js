@@ -44,15 +44,12 @@ const history_1 = require("./history");
 const settings_menu_1 = require("./settings_menu");
 const shell_1 = require("./shell");
 const workspace_model_1 = require("./workspace_model");
-const auth_1 = require("./auth");
 const apply_1 = require("./apply");
 const ui_1 = require("./ui");
 const planner_1 = require("./planner");
 const task_runner_1 = require("./task_runner");
 const rollback_1 = require("./rollback");
 const path = __importStar(require("path"));
-const fs = __importStar(require("fs"));
-const os = __importStar(require("os"));
 // Parse input to detect slash commands
 function parseInput(input) {
     const trimmed = input.trim();
@@ -155,20 +152,25 @@ const handlers = {
     },
     mode: (ctx) => {
         const newMode = ctx.args[0]?.toLowerCase();
-        const validModes = ['edit', 'ask', 'explain', 'review', 'debug'];
+        const validModes = ['auto', 'edit', 'ask', 'explain', 'review', 'debug'];
         if (!newMode) {
             const session = (0, session_1.getSession)();
             console.log(`Current mode: ${session.mode}`);
-            console.log('Available modes: edit, ask, explain, review, debug');
+            console.log('Available modes: auto (YOLO), edit, ask, explain, review, debug');
             return;
         }
         if (!validModes.includes(newMode)) {
             console.log(`Invalid mode: ${newMode}`);
-            console.log('Available modes: edit, ask, explain, review, debug');
+            console.log('Available modes: auto (YOLO), edit, ask, explain, review, debug');
             return;
         }
         (0, session_1.setMode)(newMode);
-        console.log((0, ui_1.success)(`Mode set to: ${newMode}`));
+        if (newMode === 'auto') {
+            console.log((0, ui_1.success)('YOLO mode enabled - executing tasks directly without confirmations'));
+        }
+        else {
+            console.log((0, ui_1.success)(`Mode set to: ${newMode}`));
+        }
     },
     ask: () => {
         (0, session_1.setMode)('ask');
@@ -215,27 +217,60 @@ const handlers = {
         console.log('Usage: /model [list | set <model-id>]');
     },
     plan: async () => {
-        console.log('Planning...');
-        const result = await (0, planner_1.runPlannerLoop)();
-        if (!result.success) {
-            console.log((0, ui_1.error)(result.message));
+        const intent = (0, session_1.getIntent)();
+        if (!intent) {
+            console.log((0, ui_1.error)('No task set. Type a task first, then use /plan.'));
+            console.log((0, ui_1.hint)('Example: "add error handling to auth.ts"'));
             return;
         }
-        console.log('Plan generated.');
-        console.log(`Steps: ${result.plan?.length || 0}`);
-        console.log((0, ui_1.hint)('/generate'));
+        console.log((0, ui_1.info)(`Planning: ${intent.substring(0, 50)}${intent.length > 50 ? '...' : ''}`));
+        try {
+            const result = await (0, planner_1.runPlannerLoop)();
+            if (!result.success) {
+                console.log((0, ui_1.error)(result.message));
+                return;
+            }
+            console.log((0, ui_1.success)('Plan generated.'));
+            if (result.plan && result.plan.length > 0) {
+                console.log(`Steps (${result.plan.length}):`);
+                for (const step of result.plan) {
+                    console.log(`  ${step.id}. ${step.description}`);
+                }
+            }
+            console.log((0, ui_1.hint)('/generate to create changes'));
+        }
+        catch (e) {
+            console.log((0, ui_1.error)(`Planning failed: ${e?.message || e}`));
+        }
     },
     generate: async () => {
-        console.log('Generating...');
-        const result = await (0, planner_1.runGenerateLoop)();
-        if (!result.success) {
-            console.log((0, ui_1.error)(result.message));
+        const session = (0, session_1.getSession)();
+        if (!session.lastPlan || session.lastPlan.length === 0) {
+            console.log((0, ui_1.error)('No plan exists. Use /plan first.'));
             return;
         }
-        console.log('Changes generated.');
-        const fileCount = (result.changes?.files?.length || 0) + (result.changes?.diffs?.length || 0);
-        console.log(`Files: ${fileCount}`);
-        console.log((0, ui_1.hint)('/diff'));
+        console.log((0, ui_1.info)('Generating changes...'));
+        try {
+            const result = await (0, planner_1.runGenerateLoop)();
+            if (!result.success) {
+                console.log((0, ui_1.error)(result.message));
+                return;
+            }
+            console.log((0, ui_1.success)('Changes generated.'));
+            const fileCount = (result.changes?.files?.length || 0) + (result.changes?.diffs?.length || 0);
+            if (fileCount > 0) {
+                console.log(`Files affected: ${fileCount}`);
+                if (result.changes?.files) {
+                    for (const f of result.changes.files) {
+                        console.log(`  ${f.operation}: ${f.path}`);
+                    }
+                }
+            }
+            console.log((0, ui_1.hint)('/diff to review, /apply to execute'));
+        }
+        catch (e) {
+            console.log((0, ui_1.error)(`Generation failed: ${e?.message || e}`));
+        }
     },
     diff: () => {
         const session = (0, session_1.getSession)();
@@ -326,40 +361,9 @@ const handlers = {
         console.log(`Root: ${ws.getRoot()}`);
     },
     doctor: async () => {
-        console.log('System check...');
-        console.log('');
-        // Check 1: API key
-        const hasKey = await (0, auth_1.hasValidCredentials)();
-        console.log(`API key: ${hasKey ? (0, ui_1.success)('configured') : (0, ui_1.error)('missing')}`);
-        // Check 2: Config directory
-        const configExists = fs.existsSync(path.join(os.homedir(), '.zai'));
-        console.log(`Config dir: ${configExists ? (0, ui_1.success)('exists') : (0, ui_1.error)('missing')}`);
-        // Check 3: Working directory writable
-        const session = (0, session_1.getSession)();
-        let writable = false;
-        try {
-            const testFile = path.join(session.workingDirectory, '.zai-test');
-            fs.writeFileSync(testFile, 'test');
-            fs.unlinkSync(testFile);
-            writable = true;
-        }
-        catch {
-            writable = false;
-        }
-        console.log(`Workspace: ${writable ? (0, ui_1.success)('writable') : (0, ui_1.error)('read-only')}`);
-        // Check 4: Node version
-        const nodeVersion = process.version;
-        const major = parseInt(nodeVersion.slice(1).split('.')[0], 10);
-        console.log(`Node.js: ${major >= 18 ? (0, ui_1.success)(nodeVersion) : (0, ui_1.error)(`${nodeVersion} (requires 18+)`)}`);
-        // Summary
-        console.log('');
-        const allGood = hasKey && configExists && writable && major >= 18;
-        if (allGood) {
-            console.log((0, ui_1.success)('All checks passed.'));
-        }
-        else {
-            console.log((0, ui_1.error)('Some checks failed.'));
-        }
+        const { runDiagnostics, formatDiagnostics } = await Promise.resolve().then(() => __importStar(require('./doctor')));
+        const results = await runDiagnostics();
+        console.log(formatDiagnostics(results));
     },
     exit: () => { process.exit(0); },
     exec: (ctx) => {

@@ -169,13 +169,14 @@ function validateSchema(data, schema) {
         errors,
     };
 }
-function httpsPost(urlString, options = {}) {
+function httpsPost(urlString, options = {}, timeout = REQUEST_TIMEOUT) {
     return new Promise((resolve, reject) => {
         const parsedUrl = new url_1.URL(urlString);
         const isHttps = parsedUrl.protocol === 'https:';
         const requestFn = isHttps ? https.request : http.request;
         const headers = {
             'Content-Type': 'application/json',
+            'User-Agent': 'zai-code/1.0',
             ...options.headers,
         };
         if (options.body) {
@@ -187,6 +188,7 @@ function httpsPost(urlString, options = {}) {
             path: parsedUrl.pathname + parsedUrl.search,
             method: options.method || 'POST',
             headers,
+            timeout,
         };
         const req = requestFn(requestOptions, (res) => {
             const chunks = [];
@@ -203,7 +205,11 @@ function httpsPost(urlString, options = {}) {
             });
         });
         req.on('error', (error) => {
-            reject(error);
+            reject(new Error(`Network error: ${error.message}`));
+        });
+        req.on('timeout', () => {
+            req.destroy();
+            reject(new Error(`Request timeout after ${timeout}ms`));
         });
         if (options.body) {
             req.write(options.body);
@@ -213,43 +219,64 @@ function httpsPost(urlString, options = {}) {
 }
 const DEFAULT_MODEL = 'glm-4.7';
 const DEFAULT_MAX_TOKENS = 4096;
-async function makeRequest(url, chatRequest, apiKey) {
-    try {
-        const response = await httpsPost(url, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(chatRequest),
-        });
-        if (response.statusCode !== 200) {
-            let errorMessage = `HTTP ${response.statusCode}`;
-            try {
-                const errorBody = JSON.parse(response.body);
-                if (errorBody.error?.message) {
-                    errorMessage = errorBody.error.message;
+const REQUEST_TIMEOUT = 60000; // 60 seconds
+async function makeRequest(url, chatRequest, apiKey, retries = 2) {
+    let lastError = '';
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+            const response = await httpsPost(url, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(chatRequest),
+            });
+            if (response.statusCode === 429) {
+                // Rate limited - wait and retry
+                const retryAfter = parseInt(response.headers['retry-after']) || 5;
+                if (attempt < retries) {
+                    await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+                    continue;
                 }
+                return { success: false, error: 'Rate limited. Please try again later.' };
             }
-            catch {
-                if (response.body) {
-                    errorMessage = response.body.substring(0, 500);
+            if (response.statusCode >= 500 && attempt < retries) {
+                // Server error - retry
+                await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+                continue;
+            }
+            if (response.statusCode !== 200) {
+                let errorMessage = `HTTP ${response.statusCode}`;
+                try {
+                    const errorBody = JSON.parse(response.body);
+                    if (errorBody.error?.message) {
+                        errorMessage = errorBody.error.message;
+                    }
                 }
+                catch {
+                    if (response.body) {
+                        errorMessage = response.body.substring(0, 500);
+                    }
+                }
+                return { success: false, error: errorMessage };
             }
-            return { success: false, error: errorMessage };
+            const chatResponse = JSON.parse(response.body);
+            if (chatResponse.error) {
+                return { success: false, error: chatResponse.error.message };
+            }
+            return { success: true, data: chatResponse };
         }
-        const chatResponse = JSON.parse(response.body);
-        if (chatResponse.error) {
-            return { success: false, error: chatResponse.error.message };
+        catch (error) {
+            lastError = error instanceof Error ? error.message : String(error);
+            // Network errors - retry
+            if (attempt < retries) {
+                await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+                continue;
+            }
         }
-        return { success: true, data: chatResponse };
     }
-    catch (error) {
-        return {
-            success: false,
-            error: error instanceof Error ? error.message : String(error),
-        };
-    }
+    return { success: false, error: lastError || 'Request failed after retries' };
 }
 function extractOutputText(chatResponse) {
     if (chatResponse.choices && chatResponse.choices.length > 0) {
@@ -259,6 +286,7 @@ function extractOutputText(chatResponse) {
 }
 async function execute(request, apiKey) {
     const config = (0, config_1.loadConfig)();
+    // Z.ai (Zhipu AI) international coding API
     const baseUrl = config.api?.baseUrl || 'https://api.z.ai/api/coding/paas/v4/';
     const url = baseUrl.endsWith('/') ? `${baseUrl}chat/completions` : `${baseUrl}/chat/completions`;
     const model = request.model || (0, settings_1.getModel)();

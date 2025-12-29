@@ -15,6 +15,24 @@ export interface ModePrompt {
 }
 
 const MODE_PROMPTS: Record<SessionMode, ModePrompt> = {
+    auto: {
+        systemPrefix: `You are an autonomous AI coding agent in AUTO mode. Execute tasks directly without asking for confirmation. Be decisive and take action.`,
+        constraints: `
+- Execute tasks immediately without confirmation
+- Make decisions autonomously
+- Create, modify, or delete files as needed
+- Run necessary commands
+- Fix issues as you encounter them
+- Be proactive and thorough`,
+        outputFormat: `
+Return structured output with:
+- status: "success" or "error"
+- files: array of {path, operation: "create"|"modify"|"delete", content}
+- diffs: array of {path, hunks} for partial modifications
+- explanation: brief description of changes`,
+        allowedActions: { plan: true, generate: true, apply: true, execute: true },
+    },
+
     edit: {
         systemPrefix: `You are a senior software engineer in EDIT mode. Your goal is to implement code changes efficiently and correctly.`,
         constraints: `
@@ -133,6 +151,8 @@ export function isActionAllowed(action: keyof ModePrompt['allowedActions'], mode
 // Get mode description for UI
 export function getModeDescription(mode: SessionMode): string {
     switch (mode) {
+        case 'auto':
+            return 'Autonomous execution, no confirmations (YOLO)';
         case 'edit':
             return 'Write and modify code';
         case 'ask':

@@ -35,7 +35,7 @@ export declare const PLAN_SCHEMA: {
         };
     };
 };
-export type SessionMode = 'edit' | 'ask' | 'explain' | 'review' | 'debug';
+export type SessionMode = 'edit' | 'ask' | 'explain' | 'review' | 'debug' | 'auto';
 export interface PlanStep {
     id: string;
     description: string;

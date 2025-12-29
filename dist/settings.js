@@ -54,9 +54,8 @@ const os = __importStar(require("os"));
 const SETTINGS_FILE = path.join(os.homedir(), '.zai', 'settings.json');
 const PROJECT_SETTINGS_FILE = '.zai/settings.json';
 exports.ZAI_MODELS = [
-    { id: 'glm-4.7', name: 'GLM-4.7', description: 'Flagship, default' },
-    { id: 'glm-4.6', name: 'GLM-4.6', description: 'Advanced coding & reasoning' },
-    { id: 'glm-4.5', name: 'GLM-4.5', description: 'General purpose' },
+    { id: 'glm-4.7', name: 'GLM-4.7', description: 'Flagship model (Sonnet/Opus tier)' },
+    { id: 'glm-4.5-air', name: 'GLM-4.5-Air', description: 'Fast & efficient (Haiku tier)' },
 ];
 const DEFAULT_SETTINGS = {
     model: {

@@ -1,9 +1,10 @@
 import { parseInput, executeCommand, ParsedCommand } from './commands';
-import { getSession, setIntent, getIntent, IntentType, setIntentType, getMode } from './session';
-import { hint, dim, error } from './ui';
-import { execute } from './runtime';
+import { getSession, setIntent, getIntent, IntentType, setIntentType, getMode, setPendingActions } from './session';
+import { hint, dim, error, success, info } from './ui';
+import { execute, ResponseSchema } from './runtime';
 import { ensureAuthenticated } from './auth';
 import { buildSystemPrompt } from './mode_prompts';
+import { applyFileOperation } from './apply';
 
 // Workflow types
 export type WorkflowType =
@@ -12,6 +13,7 @@ export type WorkflowType =
   | 'ask_question'
   | 'append_context'
   | 'confirm_action'
+  | 'auto_execute'
   | 'ignore';
 
 export interface OrchestrationResult {
@@ -65,48 +67,152 @@ function determineWorkflow(intent: IntentType, hasExistingIntent: boolean): Work
     return 'ask_question';
   }
 
+  // Auto mode - execute directly without manual steps
+  if (mode === 'auto') {
+    return 'auto_execute';
+  }
+
+  // Questions always go to ask workflow regardless of mode
+  if (intent === 'QUESTION') {
+    return 'ask_question';
+  }
+
   return 'capture_intent';
 }
 
 // Handle question/explain/review in read-only modes
 async function handleAskQuestion(input: string): Promise<{ handled: boolean; message?: string }> {
   try {
-    const apiKey = await ensureAuthenticated();
+    let apiKey: string;
+    try {
+      apiKey = await ensureAuthenticated();
+    } catch (authError: any) {
+      console.log(error(`Authentication required: ${authError?.message || 'Run zcode auth'}`));
+      return { handled: true };
+    }
+    
+    if (!apiKey) {
+      console.log(error('No API key configured. Run "zcode auth" to set up.'));
+      return { handled: true };
+    }
+
     const session = getSession();
     const mode = getMode();
     const modePrompt = buildSystemPrompt(mode, session.workingDirectory);
 
     const instruction = `${modePrompt}
 
-User input: ${input}`;
+User input: ${input}
+
+Respond directly and concisely.`;
+
+    console.log(dim('Thinking...'));
+    const result = await execute({ instruction, enforceSchema: false }, apiKey);
+
+    if (result.success && result.output) {
+      const response = result.output;
+      
+      // Handle string response
+      if (typeof response === 'string') {
+        console.log(response);
+      } else if (typeof response === 'object') {
+        const obj = response as { explanation?: string; message?: string; summary?: string; output?: string; issues?: unknown[] };
+        
+        // Try various output fields
+        if (obj.output) {
+          console.log(obj.output);
+        } else if (obj.explanation) {
+          console.log(obj.explanation);
+        } else if (obj.summary) {
+          console.log(obj.summary);
+          if (obj.issues && Array.isArray(obj.issues)) {
+            for (const issue of obj.issues as Array<{ severity?: string; description?: string }>) {
+              console.log(`  [${issue.severity || 'note'}] ${issue.description || ''}`);
+            }
+          }
+        } else if (obj.message) {
+          console.log(obj.message);
+        } else {
+          console.log(JSON.stringify(response, null, 2));
+        }
+      }
+    } else {
+      console.log(error(`Failed: ${result.error || 'Unknown error'}`));
+    }
+
+    return { handled: true };
+  } catch (e: any) {
+    console.log(error(`Error: ${e?.message || e}`));
+    return { handled: true };
+  }
+}
+
+// Handle auto execution - plan, generate, and apply in one go
+async function handleAutoExecute(input: string): Promise<{ handled: boolean; message?: string }> {
+  try {
+    let apiKey: string;
+    try {
+      apiKey = await ensureAuthenticated();
+    } catch (authError: any) {
+      console.log(error(`Authentication required: ${authError?.message || 'Run zcode auth'}`));
+      return { handled: true };
+    }
+    
+    if (!apiKey) {
+      console.log(error('No API key configured. Run "zcode auth" to set up.'));
+      return { handled: true };
+    }
+
+    const session = getSession();
+    const modePrompt = buildSystemPrompt('auto', session.workingDirectory);
+
+    console.log(info('Executing autonomously...'));
+
+    const instruction = `${modePrompt}
+
+Task: ${input}
+
+Execute this task. If it requires code changes, provide the file operations.
+If it's a question, answer it directly.
+Be decisive and complete the task.`;
 
     const result = await execute({ instruction }, apiKey);
 
     if (result.success && result.output) {
-      const response = result.output as { explanation?: string; message?: string; summary?: string; issues?: unknown[] };
-
-      // Handle different response formats based on mode
-      if (response.explanation) {
-        console.log(response.explanation);
-      } else if (response.summary) {
-        console.log(response.summary);
-        if (response.issues && Array.isArray(response.issues)) {
-          for (const issue of response.issues as Array<{ severity?: string; description?: string }>) {
-            console.log(`  [${issue.severity || 'note'}] ${issue.description || ''}`);
+      const response = result.output as ResponseSchema;
+      
+      // Check if there are file operations
+      if (response.files && response.files.length > 0) {
+        console.log(success(`Applying ${response.files.length} file(s)...`));
+        
+        for (const file of response.files) {
+          try {
+            const result = applyFileOperation(file.operation, file.path, file.content);
+            if (result.success) {
+              console.log(success(`${file.operation}: ${file.path}`));
+            } else {
+              console.log(error(`Failed ${file.path}: ${result.error}`));
+            }
+          } catch (e: any) {
+            console.log(error(`Failed ${file.path}: ${e?.message}`));
           }
         }
-      } else if (response.message) {
-        console.log(response.message);
-      } else {
-        console.log(JSON.stringify(response, null, 2));
+      }
+      
+      // Show output
+      if (response.output) {
+        console.log('');
+        console.log(response.output);
+      } else if (typeof response === 'string') {
+        console.log(response);
       }
     } else {
-      console.log(error(`Failed: ${result.error}`));
+      console.log(error(`Failed: ${result.error || 'Unknown error'}`));
     }
 
     return { handled: true };
-  } catch (e) {
-    console.log(error(`Error: ${e}`));
+  } catch (e: any) {
+    console.log(error(`Error: ${e?.message || e}`));
     return { handled: true };
   }
 }
@@ -126,13 +232,18 @@ async function handleWorkflow(
     case 'ask_question':
       return handleAskQuestion(input);
 
+    case 'auto_execute':
+      return handleAutoExecute(input);
+
     case 'capture_intent':
       setIntent(input);
       setIntentType(intent);
-      // Clear, minimal output with next action
+      // Provide clear feedback about what was captured
       const intentLabel = intent.toLowerCase().replace('_', ' ');
-      console.log(`${dim('intent:')} ${intentLabel}`);
-      console.log(hint('/plan'));
+      console.log(`Task captured: "${input.substring(0, 60)}${input.length > 60 ? '...' : ''}"`);
+      console.log(`Type: ${intentLabel}`);
+      console.log('');
+      console.log(hint('Type /plan to create execution plan'));
       return { handled: true };
 
     case 'append_context':

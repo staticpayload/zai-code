@@ -6,7 +6,14 @@ exports.executeCommand = executeCommand;
 exports.getAllowedCommands = getAllowedCommands;
 const child_process_1 = require("child_process");
 const session_1 = require("./session");
-// Allowlist of permitted commands
+// Platform-specific command aliases
+const WINDOWS_ALIASES = {
+    'ls': 'dir',
+    'cat': 'type',
+    'pwd': 'cd',
+    'clear': 'cls',
+};
+// Allowlist of permitted commands (cross-platform)
 const ALLOWED_COMMANDS = new Set([
     'git',
     'npm',
@@ -22,6 +29,7 @@ const ALLOWED_COMMANDS = new Set([
     'go',
     'cargo',
     'make',
+    // Unix commands
     'ls',
     'cat',
     'head',
@@ -31,6 +39,11 @@ const ALLOWED_COMMANDS = new Set([
     'find',
     'pwd',
     'echo',
+    // Windows commands
+    'dir',
+    'type',
+    'where',
+    'findstr',
 ]);
 exports.ALLOWED_COMMANDS = ALLOWED_COMMANDS;
 // Dangerous patterns that are never allowed
@@ -78,6 +91,19 @@ function validateCommand(command) {
     }
     return { valid: true };
 }
+// Translate Unix commands to Windows equivalents if needed
+function translateCommand(command) {
+    if (process.platform !== 'win32') {
+        return command;
+    }
+    const parts = command.trim().split(/\s+/);
+    const baseCmd = parts[0];
+    if (WINDOWS_ALIASES[baseCmd]) {
+        parts[0] = WINDOWS_ALIASES[baseCmd];
+        return parts.join(' ');
+    }
+    return command;
+}
 // Execute a command safely
 function executeCommand(command, cwd) {
     const validation = validateCommand(command);
@@ -93,15 +119,18 @@ function executeCommand(command, cwd) {
     }
     const session = (0, session_1.getSession)();
     const workingDir = cwd || session.workingDirectory;
+    // Translate command for Windows if needed
+    const translatedCommand = translateCommand(command);
     const options = {
         cwd: workingDir,
         encoding: 'utf-8',
         timeout: 30000, // 30 second timeout
         maxBuffer: 1024 * 1024 * 5, // 5MB buffer
         stdio: ['pipe', 'pipe', 'pipe'],
+        shell: process.platform === 'win32' ? 'cmd.exe' : '/bin/sh',
     };
     try {
-        const stdout = (0, child_process_1.execSync)(command, options);
+        const stdout = (0, child_process_1.execSync)(translatedCommand, options);
         return {
             success: true,
             command,

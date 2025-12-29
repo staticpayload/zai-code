@@ -329,13 +329,21 @@ async function startInteractive(options) {
     };
     process.stdin.on('data', handleKey);
     process.on('SIGINT', () => {
+        cleanup();
+    });
+    process.on('SIGTERM', () => {
+        cleanup();
+    });
+    function cleanup() {
         screen.clear();
         screen.moveTo(1, 1);
         screen.showCursor();
         if (process.stdin.isTTY)
             process.stdin.setRawMode(false);
+        process.stdin.pause();
         options?.onExit?.();
-    });
+        process.exit(0);
+    }
     // Handle terminal resize
     process.stdout.on('resize', () => {
         screen.clear();
@@ -344,6 +352,12 @@ async function startInteractive(options) {
         if (showPalette) {
             paletteCount = renderPalette(input, paletteIndex);
         }
+        renderPrompt(input);
+    });
+    // Handle uncaught errors gracefully
+    process.on('uncaughtException', (err) => {
+        addOutput(`Error: ${err.message}`);
+        renderOutput();
         renderPrompt(input);
     });
     return new Promise(() => { });

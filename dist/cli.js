@@ -43,8 +43,6 @@ const session_1 = require("./session");
 const workspace_model_1 = require("./workspace_model");
 const settings_1 = require("./settings");
 const path = __importStar(require("path"));
-const fs = __importStar(require("fs"));
-const os = __importStar(require("os"));
 async function handleDefault() {
     await (0, auth_1.ensureAuthenticated)();
     const session = (0, session_1.getSession)();
@@ -101,40 +99,57 @@ async function handleAuth() {
     console.log("Re-authentication complete");
 }
 async function handleDoctor() {
-    const { hasValidCredentials } = await Promise.resolve().then(() => __importStar(require('./auth')));
-    const hasKey = await hasValidCredentials();
-    console.log('System check...');
-    console.log('');
-    console.log(`API key: ${hasKey ? 'configured' : 'not configured'}`);
-    console.log(`Node.js: ${process.version}`);
-    console.log(`Platform: ${process.platform}`);
-    const configExists = fs.existsSync(path.join(os.homedir(), '.zai'));
-    console.log(`Config dir: ${configExists ? 'exists' : 'missing'}`);
-    const session = (0, session_1.getSession)();
-    let writable = false;
-    try {
-        const testFile = path.join(session.workingDirectory, '.zai-test');
-        fs.writeFileSync(testFile, 'test');
-        fs.unlinkSync(testFile);
-        writable = true;
-    }
-    catch {
-        writable = false;
-    }
-    console.log(`Workspace: ${writable ? 'writable' : 'read-only'}`);
-    console.log('');
-    const allGood = hasKey && configExists && writable;
-    if (allGood) {
-        console.log('All checks passed.');
-    }
-    else {
-        console.log('Some checks failed.');
-    }
+    const { runDiagnostics, formatDiagnostics } = await Promise.resolve().then(() => __importStar(require('./doctor')));
+    const results = await runDiagnostics();
+    console.log(formatDiagnostics(results));
+}
+function handleHelp() {
+    console.log(`
+zai·code - Z.ai-native AI code editor
+
+Usage:
+  zcode                 Launch interactive TUI
+  zcode run <task>      Execute a task directly
+  zcode auth            Configure API key
+  zcode doctor          System health check
+  zcode --help, -h      Show this help
+
+Interactive Commands:
+  /help                 Show all commands
+  /plan                 Generate execution plan
+  /generate             Create file changes
+  /diff                 Review pending changes
+  /apply                Apply changes
+  /undo                 Rollback last operation
+  /settings             Open settings menu
+  /exit                 Exit zcode
+
+Modes:
+  /mode edit            Write and modify code (default)
+  /mode ask             Questions only, no changes
+  /mode review          Code analysis and feedback
+  /mode debug           Investigate and fix issues
+
+Environment:
+  Z_KEY                 Z.ai API key (or use 'zcode auth')
+
+More info: https://github.com/staticpayload/zai-code
+`);
+}
+function handleVersion() {
+    const pkg = require('../package.json');
+    console.log(`zai-code v${pkg.version}`);
 }
 const commands = {
     run: handleRun,
     auth: handleAuth,
     doctor: handleDoctor,
+    help: handleHelp,
+    '--help': handleHelp,
+    '-h': handleHelp,
+    version: handleVersion,
+    '--version': handleVersion,
+    '-v': handleVersion,
 };
 async function main() {
     const args = process.argv.slice(2);
@@ -149,6 +164,7 @@ async function main() {
     }
     else {
         console.log(`Unknown command: ${command}`);
+        console.log(`Run 'zcode --help' for usage information.`);
     }
 }
 main();

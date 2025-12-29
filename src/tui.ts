@@ -48,6 +48,13 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     const { projectName, restored, onExit } = options;
     const session = getSession();
 
+    // Check if TTY is available
+    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+        console.error('Error: TUI requires an interactive terminal.');
+        console.error('Run in a terminal that supports TTY, or use "zcode run <task>" for non-interactive mode.');
+        process.exit(1);
+    }
+
     // Create screen with explicit color support
     const screen = blessed.screen({
         smartCSR: true,
@@ -55,6 +62,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         fullUnicode: true,
         dockBorders: true,
         autoPadding: true,
+        warnings: false, // Suppress blessed warnings
     });
 
     // Theme colors
@@ -201,7 +209,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         }
     });
 
-    // Input textbox
+    // Input textbox - higher z-index to be on top
     const input = blessed.textbox({
         parent: inputContainer,
         left: 3,
@@ -217,18 +225,8 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         },
     });
 
-    // Placeholder text
-    const placeholder = blessed.text({
-        parent: inputContainer,
-        left: 3,
-        top: 0,
-        tags: true,
-        content: `{gray-fg}Type your message or /command{/gray-fg}`,
-        style: {
-            fg: theme.gray,
-            bg: theme.bg
-        },
-    });
+    // NOTE: Removed placeholder text element entirely to prevent overlap issues
+    // The tips section already explains how to use the interface
 
     // Status bar at bottom
     const statusBar = blessed.box({
@@ -260,13 +258,16 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         statusBar.setContent(`${left}${' '.repeat(padding)}${center}${' '.repeat(padding)}${right}`);
     }
 
-    // Command palette
+    // Command palette - NO keys/mouse to prevent stealing focus
     const palette = blessed.list({
         bottom: 5,
         left: 1,
         width: 40,
         height: 10,
         tags: true,
+        keys: false,  // CRITICAL: Don't let palette handle keys
+        mouse: false, // CRITICAL: Don't let palette handle mouse
+        interactive: false, // Not interactive - we handle navigation manually
         border: {
             type: 'line',
         },
@@ -343,8 +344,8 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     async function processInput(value: string) {
         if (!value.trim()) return;
 
-        placeholder.hide();
-        output.log(`{gray-fg}> ${value}{/gray-fg}`);
+        output.log(`{cyan-fg}>{/cyan-fg} ${value}`);
+        screen.render();
 
         const trimmed = value.trim();
 
@@ -358,44 +359,64 @@ export async function startTUI(options: TUIOptions): Promise<void> {
             return;
         }
 
-        // Capture console.log
+        // Capture console.log to redirect to output
         const originalLog = console.log;
+        const originalError = console.error;
+        const originalWarn = console.warn;
+        
         console.log = (...args: unknown[]) => {
-            output.log(args.map(a => String(a)).join(' '));
+            const msg = args.map(a => String(a)).join(' ');
+            output.log(msg);
+            screen.render();
+        };
+        console.error = (...args: unknown[]) => {
+            const msg = args.map(a => String(a)).join(' ');
+            output.log(`{red-fg}${msg}{/red-fg}`);
+            screen.render();
+        };
+        console.warn = (...args: unknown[]) => {
+            const msg = args.map(a => String(a)).join(' ');
+            output.log(`{yellow-fg}${msg}{/yellow-fg}`);
+            screen.render();
         };
 
         try {
+            output.log('{gray-fg}Processing...{/gray-fg}');
+            screen.render();
             await orchestrate(value);
-        } catch (e) {
-            output.log(`{red-fg}Error: ${e}{/red-fg}`);
+        } catch (e: any) {
+            output.log(`{red-fg}Error: ${e?.message || e}{/red-fg}`);
         }
 
         console.log = originalLog;
+        console.error = originalError;
+        console.warn = originalWarn;
+        
         updateStatusBar();
         screen.render();
     }
 
     // Input events
     input.on('focus', () => {
-        placeholder.hide();
         screen.render();
     });
 
     input.on('blur', () => {
-        if (!input.getValue()) {
-            placeholder.show();
-        }
         screen.render();
     });
 
     // Manual keypress handling for Palette interaction
     input.on('keypress', (ch, key) => {
-        if (!key) return;
+        if (!key) {
+            screen.render();
+            return;
+        }
 
         if (key.name === 'escape') {
             if (showPalette) {
                 togglePalette(false);
             }
+            screen.render();
             return;
         }
 
@@ -416,66 +437,64 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         }
 
         // Check input content on next tick to see if we should show palette
-        setTimeout(() => {
+        setImmediate(() => {
             const val = input.getValue();
-            if (val.startsWith('/')) {
+            if (val && val.startsWith('/')) {
                 togglePalette(true, val);
             } else {
                 if (showPalette) togglePalette(false);
             }
-        }, 0);
+            screen.render();
+        });
     });
 
     // Submit handler
     input.on('submit', async (value: string) => {
-        if (showPalette) {
-            const selectedIndex = (palette as any).selected;
-            const filter = input.getValue().replace(/^\//, '').toLowerCase();
-            // Logic duplication, but safe
+        const inputValue = value || input.getValue() || '';
+        
+        if (showPalette && inputValue.startsWith('/')) {
+            const selectedIndex = (palette as any).selected || 0;
+            const filter = inputValue.replace(/^\//, '').toLowerCase();
             const filteredCommands = COMMANDS.filter(c => c.name.startsWith(filter));
 
             if (filteredCommands[selectedIndex]) {
-                // Autocomplete
+                // Check if command needs arguments
                 const cmd = filteredCommands[selectedIndex];
-                input.setValue('/' + cmd.name + ' ');
-                togglePalette(false);
-                input.screen.render();
-                // Do not submit yet, let user type arguments
-                return;
+                const hasArgs = ['mode', 'model', 'open', 'file', 'exec'].includes(cmd.name);
+                
+                if (hasArgs && !inputValue.includes(' ')) {
+                    // Command needs args - autocomplete and wait for user to type args
+                    input.setValue('/' + cmd.name + ' ');
+                    togglePalette(false);
+                    input.focus();
+                    screen.render();
+                    return;
+                }
             }
         }
 
+        // Clear input and palette before processing
         input.clearValue();
         togglePalette(false);
-        await processInput(value);
+        screen.render();
+        
+        // Process the input
+        if (inputValue && inputValue.trim()) {
+            await processInput(inputValue);
+        }
+        
+        // Refocus input for next command
         input.focus();
+        screen.render();
     });
 
     // SETTINGS MODAL
     function showSettingsMenu() {
-        const modal = blessed.box({
-            parent: screen,
-            top: 'center',
-            left: 'center',
-            width: '50%',
-            height: '60%',
-            border: { type: 'line' },
-            label: ' Settings (Esc to save & exit) ',
-            tags: true,
-            style: {
-                bg: 'black',
-                fg: 'white',
-                border: { fg: 'cyan' },
-                label: { fg: 'cyan', bold: true }
-            },
-            draggable: true
-        });
-
-        // Current settings
+        let settingsActive = true;
         let currentSettings = loadSettings();
         const models = AVAILABLE_MODELS;
+        let selectedIndex = 0;
 
-        // Flatten settings for list
         const getListItems = () => [
             `Model: ${currentSettings.model.current}`,
             `Color: ${currentSettings.ui.color}`,
@@ -485,14 +504,31 @@ export async function startTUI(options: TUIOptions): Promise<void> {
             `Debug Log: ${currentSettings.debug.logging}`
         ];
 
+        const modal = blessed.box({
+            parent: screen,
+            top: 'center',
+            left: 'center',
+            width: '50%',
+            height: '60%',
+            border: { type: 'line' },
+            label: ' Settings ',
+            tags: true,
+            style: {
+                bg: 'black',
+                fg: 'white',
+                border: { fg: 'cyan' },
+                label: { fg: 'cyan', bold: true }
+            },
+        });
+
         const list = blessed.list({
             parent: modal,
             top: 1,
             left: 1,
             right: 1,
             bottom: 3,
-            keys: true,
-            vi: true,
+            keys: false, // We handle keys manually
+            mouse: false,
             style: {
                 selected: { bg: 'blue', fg: 'white', bold: true },
                 item: { fg: 'white', bg: 'black' }
@@ -504,49 +540,71 @@ export async function startTUI(options: TUIOptions): Promise<void> {
             parent: modal,
             bottom: 1,
             left: 1,
-            content: 'Enter: toggle/cycle  Esc: save',
+            content: '↑↓:navigate  Enter:toggle  Esc:save & exit',
             style: { fg: 'gray', bg: 'black' }
         });
 
-        list.focus();
+        list.select(0);
         screen.render();
 
-        list.on('select', (item, index) => {
-            // Basic cycling logic
-            if (index === 0) { // Model
+        function cycleValue() {
+            if (selectedIndex === 0) { // Model
                 const currIdx = models.indexOf(currentSettings.model.current);
                 const nextIdx = (currIdx + 1) % models.length;
                 currentSettings.model.current = models[nextIdx];
-            } else if (index === 1) { // Color
+            } else if (selectedIndex === 1) { // Color
                 const vals = ['auto', 'on', 'off'];
-                const currentVal = currentSettings.ui.color as string;
-                const n = (vals.indexOf(currentVal) + 1) % 3;
+                const n = (vals.indexOf(currentSettings.ui.color) + 1) % 3;
                 currentSettings.ui.color = vals[n] as any;
-            } else if (index === 2) { // Prompt
-                const v = currentSettings.ui.promptStyle === 'compact' ? 'verbose' : 'compact';
-                currentSettings.ui.promptStyle = v;
-            } else if (index === 3) { // Confirm
-                const v = currentSettings.execution.confirmationMode === 'strict' ? 'normal' : 'strict';
-                currentSettings.execution.confirmationMode = v;
-            } else if (index === 4) { // Shell
+            } else if (selectedIndex === 2) { // Prompt
+                currentSettings.ui.promptStyle = currentSettings.ui.promptStyle === 'compact' ? 'verbose' : 'compact';
+            } else if (selectedIndex === 3) { // Confirm
+                currentSettings.execution.confirmationMode = currentSettings.execution.confirmationMode === 'strict' ? 'normal' : 'strict';
+            } else if (selectedIndex === 4) { // Shell
                 currentSettings.execution.allowShellExec = !currentSettings.execution.allowShellExec;
-            } else if (index === 5) { // Debug
+            } else if (selectedIndex === 5) { // Debug
                 currentSettings.debug.logging = !currentSettings.debug.logging;
             }
-
-            // Update all items
             list.setItems(getListItems());
-            list.select(index); // Keep selection
+            list.select(selectedIndex);
             screen.render();
-        });
+        }
 
-        list.key(['escape'], () => {
+        function closeSettings() {
+            if (!settingsActive) return;
+            settingsActive = false;
             saveSettings(currentSettings);
             updateStatusBar();
-            modal.destroy();
+            screen.remove(modal);
             input.focus();
             screen.render();
             output.log('{green-fg}Settings saved.{/green-fg}');
+        }
+
+        // Handle keys on screen level while settings is open
+        const settingsKeyHandler = (ch: string, key: any) => {
+            if (!settingsActive) return;
+            
+            if (key.name === 'escape') {
+                closeSettings();
+            } else if (key.name === 'up') {
+                selectedIndex = Math.max(0, selectedIndex - 1);
+                list.select(selectedIndex);
+                screen.render();
+            } else if (key.name === 'down') {
+                selectedIndex = Math.min(getListItems().length - 1, selectedIndex + 1);
+                list.select(selectedIndex);
+                screen.render();
+            } else if (key.name === 'enter' || key.name === 'return') {
+                cycleValue();
+            }
+        };
+
+        screen.on('keypress', settingsKeyHandler);
+        
+        // Cleanup when modal is destroyed
+        modal.on('destroy', () => {
+            screen.removeListener('keypress', settingsKeyHandler);
         });
     }
 
@@ -554,6 +612,24 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     screen.key(['C-c'], () => {
         onExit?.();
         return process.exit(0);
+    });
+
+    screen.key(['q'], () => {
+        // Only quit if not focused on input
+        if (screen.focused !== input) {
+            onExit?.();
+            return process.exit(0);
+        }
+    });
+
+    // Handle errors gracefully
+    screen.on('warning', (msg: string) => {
+        // Suppress blessed warnings
+    });
+
+    process.on('uncaughtException', (err) => {
+        output.log(`{red-fg}Error: ${err.message}{/red-fg}`);
+        screen.render();
     });
 
     screen.render();
