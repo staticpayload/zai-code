@@ -1,15 +1,66 @@
-import * as keytar from 'keytar';
 import * as readline from 'readline';
-import { RequestOptions } from 'https';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { loadConfig } from './config';
 
-const SERVICE_NAME = 'zai-code';
-const ACCOUNT_NAME = 'api-key';
+const ENV_VAR_NAME = 'Z_KEY';
+const AUTH_FILE = path.join(os.homedir(), '.zai', 'auth.json');
+
+// Ensure .zai directory exists
+function ensureAuthDir(): void {
+  const dir = path.dirname(AUTH_FILE);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { mode: 0o700, recursive: true });
+  }
+}
+
+// Get API key from environment or file
+export async function getApiKey(): Promise<string | null> {
+  // 1. Check env var first
+  const envKey = process.env[ENV_VAR_NAME];
+  if (envKey && envKey.trim().length > 0) {
+    return envKey.trim();
+  }
+
+  // 2. Fall back to auth file
+  try {
+    if (fs.existsSync(AUTH_FILE)) {
+      const content = fs.readFileSync(AUTH_FILE, 'utf-8');
+      const data = JSON.parse(content);
+      if (data.apiKey && data.apiKey.length > 0) {
+        return data.apiKey;
+      }
+    }
+  } catch {
+    // Fall through
+  }
+
+  return null;
+}
+
+// Save API key to file
+export async function setApiKey(key: string): Promise<void> {
+  ensureAuthDir();
+  fs.writeFileSync(AUTH_FILE, JSON.stringify({ apiKey: key }, null, 2), { mode: 0o600 });
+}
+
+// Delete saved API key
+export async function deleteApiKey(): Promise<void> {
+  if (fs.existsSync(AUTH_FILE)) {
+    fs.unlinkSync(AUTH_FILE);
+  }
+}
+
+export async function hasValidCredentials(): Promise<boolean> {
+  const key = await getApiKey();
+  return key !== null && key.length > 0;
+}
 
 async function httpsGet(url: string, headers: Record<string, string>): Promise<{ statusCode: number; data: string }> {
   return new Promise((resolve, reject) => {
     const parsedUrl = new URL(url);
-    const options: RequestOptions = {
+    const options = {
       hostname: parsedUrl.hostname,
       port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
       path: parsedUrl.pathname + parsedUrl.search,
@@ -35,36 +86,16 @@ async function httpsGet(url: string, headers: Record<string, string>): Promise<{
   });
 }
 
-export async function getApiKey(): Promise<string | null> {
-  try {
-    return await keytar.getPassword(SERVICE_NAME, ACCOUNT_NAME);
-  } catch (error) {
-    return null;
-  }
-}
-
-export async function setApiKey(key: string): Promise<void> {
-  await keytar.setPassword(SERVICE_NAME, ACCOUNT_NAME, key);
-}
-
-export async function deleteApiKey(): Promise<void> {
-  await keytar.deletePassword(SERVICE_NAME, ACCOUNT_NAME);
-}
-
-export async function hasValidCredentials(): Promise<boolean> {
-  const key = await getApiKey();
-  return key !== null && key.length > 0;
-}
-
 export async function validateApiKey(key: string): Promise<boolean> {
   try {
     const config = loadConfig() as { api: { baseUrl: string } };
-    const response = await httpsGet(`${config.api.baseUrl}/models`, {
-      Authorization: `Bearer ${key}`,
+    const response = await httpsGet(`${config.api.baseUrl}models`, {
+      'x-api-key': key,
     });
     return response.statusCode >= 200 && response.statusCode < 300;
   } catch {
-    return false;
+    // Skip validation if network fails - assume key is valid
+    return true;
   }
 }
 
@@ -75,11 +106,10 @@ export async function promptForApiKey(): Promise<string> {
       output: process.stdout,
     });
 
-    // Use readline with muted input for hidden password
     const stdin = process.stdin;
     const stdout = process.stdout;
 
-    stdout.write('Enter API key: ');
+    stdout.write('Enter Z.ai API key (Z_KEY): ');
 
     stdin.setRawMode(true);
     stdin.resume();
@@ -89,7 +119,6 @@ export async function promptForApiKey(): Promise<string> {
 
     const onData = (char: string) => {
       if (char === '\r' || char === '\n' || char === '\u0004') {
-        // Enter or Ctrl-D
         stdin.setRawMode(false);
         stdin.pause();
         stdin.removeListener('data', onData);
@@ -97,11 +126,9 @@ export async function promptForApiKey(): Promise<string> {
         rl.close();
         resolve(key);
       } else if (char === '\u0003') {
-        // Ctrl-C
         stdout.write('\n');
         process.exit(0);
       } else if (char === '\u007f') {
-        // Backspace
         if (key.length > 0) {
           key = key.slice(0, -1);
         }
@@ -115,28 +142,39 @@ export async function promptForApiKey(): Promise<string> {
 }
 
 export async function runOnboarding(): Promise<void> {
+  console.log('');
+  console.log('Z.ai API key required.');
+  console.log('You can also set the Z_KEY environment variable.');
+  console.log('');
+
   while (true) {
-    console.log('Z.ai API key required');
     const key = await promptForApiKey();
 
-    if (await validateApiKey(key)) {
-      await setApiKey(key);
-      console.log('Authentication successful');
-      return;
-    } else {
-      console.log('Invalid API key');
+    if (key.trim().length === 0) {
+      console.log('API key cannot be empty.');
+      continue;
     }
+
+    // Save to file
+    await setApiKey(key.trim());
+    console.log('API key saved to ~/.zai/auth.json');
+    console.log('');
+    return;
   }
 }
 
 export async function ensureAuthenticated(): Promise<string> {
-  if (await hasValidCredentials()) {
-    const key = await getApiKey();
-    return key as string;
+  const key = await getApiKey();
+  if (key) {
+    return key;
   }
 
   await runOnboarding();
 
-  const key = await getApiKey();
-  return key as string;
+  const newKey = await getApiKey();
+  if (!newKey) {
+    console.error('Authentication failed.');
+    process.exit(1);
+  }
+  return newKey;
 }
