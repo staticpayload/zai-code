@@ -16,7 +16,7 @@ export const BUILT_IN_PROFILES: Profile[] = [
     name: 'safe',
     description: 'Conservative settings, strict confirmation',
     settings: {
-      model: 'claude-sonnet-4-20250514',
+      model: 'glm-4.7',
       contextScope: 'open',
       confirmationMode: 'strict',
       maxPlanIterations: 3,
@@ -26,7 +26,7 @@ export const BUILT_IN_PROFILES: Profile[] = [
     name: 'balanced',
     description: 'Default settings for typical use',
     settings: {
-      model: 'claude-sonnet-4-20250514',
+      model: 'glm-4.7',
       contextScope: 'touched',
       confirmationMode: 'strict',
       maxPlanIterations: 5,
@@ -36,7 +36,7 @@ export const BUILT_IN_PROFILES: Profile[] = [
     name: 'fast',
     description: 'Faster execution, less confirmation',
     settings: {
-      model: 'claude-3-5-haiku-20241022',
+      model: 'glm-4.5',
       contextScope: 'open',
       confirmationMode: 'normal',
       maxPlanIterations: 3,

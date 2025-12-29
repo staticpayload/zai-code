@@ -285,7 +285,7 @@ interface AnthropicResponse {
   };
 }
 
-const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
+const DEFAULT_MODEL = 'glm-4.7';
 const DEFAULT_MAX_TOKENS = 4096;
 
 async function makeRequest(
@@ -421,9 +421,9 @@ export async function execute(
       output: (initialResult.parsedData ?? initialResult.outputText ?? '') as string | object,
       usage: initialResult.usage
         ? {
-            inputTokens: initialResult.usage.input_tokens,
-            outputTokens: initialResult.usage.output_tokens,
-          }
+          inputTokens: initialResult.usage.input_tokens,
+          outputTokens: initialResult.usage.output_tokens,
+        }
         : undefined,
     };
   }
@@ -437,9 +437,9 @@ export async function execute(
       output: (initialResult.parsedData ?? initialResult.outputText ?? '') as string | object,
       usage: initialResult.usage
         ? {
-            inputTokens: initialResult.usage.input_tokens,
-            outputTokens: initialResult.usage.output_tokens,
-          }
+          inputTokens: initialResult.usage.input_tokens,
+          outputTokens: initialResult.usage.output_tokens,
+        }
         : undefined,
     };
   }
@@ -464,9 +464,9 @@ export async function execute(
       output: (retryResult.parsedData ?? retryResult.outputText ?? '') as string | object,
       usage: retryResult.usage
         ? {
-            inputTokens: retryResult.usage.input_tokens,
-            outputTokens: retryResult.usage.output_tokens,
-          }
+          inputTokens: retryResult.usage.input_tokens,
+          outputTokens: retryResult.usage.output_tokens,
+        }
         : undefined,
     };
   }
