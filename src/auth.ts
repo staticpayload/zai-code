@@ -144,7 +144,6 @@ export async function promptForApiKey(): Promise<string> {
 export async function runOnboarding(): Promise<void> {
   console.log('');
   console.log('Z.ai API key required.');
-  console.log('You can also set the Z_KEY environment variable.');
   console.log('');
 
   while (true) {
@@ -155,10 +154,43 @@ export async function runOnboarding(): Promise<void> {
       continue;
     }
 
+    const trimmedKey = key.trim();
+
     // Save to file
-    await setApiKey(key.trim());
-    console.log('API key saved to ~/.zai/auth.json');
-    console.log('');
+    await setApiKey(trimmedKey);
+    console.log('✓ Saved to ~/.zai/auth.json');
+
+    // Add to shell profile
+    const shellProfile = path.join(os.homedir(), '.zshrc');
+    const exportLine = `export Z_KEY="${trimmedKey}"`;
+
+    try {
+      let content = '';
+      if (fs.existsSync(shellProfile)) {
+        content = fs.readFileSync(shellProfile, 'utf-8');
+      }
+
+      // Check if already exists
+      if (content.includes('export Z_KEY=')) {
+        // Replace existing
+        content = content.replace(/export Z_KEY=.*$/m, exportLine);
+      } else {
+        // Append
+        content = content.trimEnd() + '\n\n# Z.ai CLI\n' + exportLine + '\n';
+      }
+
+      fs.writeFileSync(shellProfile, content);
+      console.log('✓ Added Z_KEY to ~/.zshrc');
+      console.log('');
+      console.log('Run this to activate:');
+      console.log('  source ~/.zshrc');
+      console.log('');
+    } catch (e) {
+      console.log('Could not update ~/.zshrc. Set Z_KEY manually:');
+      console.log(`  export Z_KEY="${trimmedKey}"`);
+      console.log('');
+    }
+
     return;
   }
 }
