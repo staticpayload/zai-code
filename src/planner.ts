@@ -6,6 +6,7 @@ import { PLAN_SCHEMA } from './session';
 import { success, error } from './ui';
 import * as path from 'path';
 import { buildContext, formatContextForModel } from './context/context_builder';
+import { getAgentsContext } from './agents';
 
 // Planner configuration
 const MAX_PLAN_ITERATIONS = 5;
@@ -94,8 +95,10 @@ export async function runPlannerLoop(): Promise<PlannerResult> {
   while (iterations < MAX_PLAN_ITERATIONS) {
     iterations++;
 
-    const instruction = `Create a plan for the following task.
+    const agentsContext = getAgentsContext(session.workingDirectory);
 
+    const instruction = `Create a plan for the following task.
+${agentsContext}
 Task: ${intent}
 Intent Type: ${getIntentType() || 'COMMAND'}
 Mode: ${session.mode}
@@ -219,8 +222,10 @@ export async function runGenerateLoop(): Promise<GenerateResult> {
   while (iterations < MAX_REFINE_ITERATIONS) {
     iterations++;
 
-    const instruction = `Execute the following plan and output file changes.
+    const agentsContext = getAgentsContext(session.workingDirectory);
 
+    const instruction = `Execute the following plan and output file changes.
+${agentsContext}
 Task: ${intent}
 
 Plan:
