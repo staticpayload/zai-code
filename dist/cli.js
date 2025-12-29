@@ -41,29 +41,23 @@ const apply_1 = require("./apply");
 const workspace_1 = require("./workspace");
 const session_1 = require("./session");
 const workspace_model_1 = require("./workspace_model");
-const ui_1 = require("./ui");
 const settings_1 = require("./settings");
 const path = __importStar(require("path"));
+const fs = __importStar(require("fs"));
+const os = __importStar(require("os"));
 async function handleDefault() {
     await (0, auth_1.ensureAuthenticated)();
     const session = (0, session_1.getSession)();
     const ws = (0, workspace_model_1.getWorkspace)(session.workingDirectory);
     // Restore previous session
     const restored = ws.restoreState();
-    // Get project name from directory
-    const projectName = path.basename(session.workingDirectory);
-    // Render startup - minimal
-    console.log((0, ui_1.renderStartup)(projectName));
-    // Restored message
-    if (restored) {
-        console.log((0, ui_1.dim)('Session restored.'));
-        console.log('');
-    }
     // Mark first run complete
     if ((0, settings_1.isFirstRun)()) {
         (0, settings_1.markFirstRunComplete)();
     }
     await (0, interactive_1.startInteractive)({
+        projectName: path.basename(session.workingDirectory),
+        restored,
         onExit: () => {
             ws.saveState();
             process.exit(0);
@@ -114,16 +108,12 @@ async function handleDoctor() {
     console.log(`API key: ${hasKey ? 'configured' : 'not configured'}`);
     console.log(`Node.js: ${process.version}`);
     console.log(`Platform: ${process.platform}`);
-    const fs = await Promise.resolve().then(() => __importStar(require('fs')));
-    const pathModule = await Promise.resolve().then(() => __importStar(require('path')));
-    const os = await Promise.resolve().then(() => __importStar(require('os')));
-    const configExists = fs.existsSync(pathModule.join(os.homedir(), '.zai'));
+    const configExists = fs.existsSync(path.join(os.homedir(), '.zai'));
     console.log(`Config dir: ${configExists ? 'exists' : 'missing'}`);
-    const { getSession } = await Promise.resolve().then(() => __importStar(require('./session')));
-    const session = getSession();
+    const session = (0, session_1.getSession)();
     let writable = false;
     try {
-        const testFile = pathModule.join(session.workingDirectory, '.zai-test');
+        const testFile = path.join(session.workingDirectory, '.zai-test');
         fs.writeFileSync(testFile, 'test');
         fs.unlinkSync(testFile);
         writable = true;
