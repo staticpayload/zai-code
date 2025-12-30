@@ -54,7 +54,7 @@ const DEFAULT_SETTINGS: Settings = {
     promptStyle: 'compact',
   },
   execution: {
-    defaultMode: 'edit',
+    defaultMode: 'auto',  // YOLO by default
     confirmationMode: 'strict',
     maxPlanIterations: 5,
     allowShellExec: false,

@@ -329,6 +329,19 @@ Respond with JSON only. No markdown, no explanation outside the JSON.`;
             if (!response && typeof result.output === 'object') {
                 response = result.output;
             }
+            // If no files array, just show the output
+            if (!response || !response.files || response.files.length === 0) {
+                if (response && response.output) {
+                    console.log(response.output);
+                }
+                else {
+                    const text = extractTextFromResponse(result.output);
+                    if (text && !text.startsWith('{')) {
+                        console.log(text);
+                    }
+                }
+                return { handled: true };
+            }
             // Check if there are file operations
             if (response && response.files && response.files.length > 0) {
                 // SAFETY: Filter out suspicious file operations
