@@ -129,7 +129,7 @@ const ASCII_LOGO = `{bold}{cyan-fg}
   ███╔╝  ██╔══██║██║    ██║     ██║   ██║██║  ██║██╔══╝  
  ███████╗██║  ██║██║    ╚██████╗╚██████╔╝██████╔╝███████╗
  ╚══════╝╚═╝  ╚═╝╚═╝     ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝{/cyan-fg}{/bold}
-                    {gray-fg}AI-native code editor v1.4.8{/gray-fg}`;
+                    {gray-fg}AI-native code editor v1.5.0{/gray-fg}`;
 
 // Animated Robot Mascot Frames
 const MASCOT_FRAMES = [
@@ -164,7 +164,7 @@ const MASCOT_FRAMES = [
 ];
 
 // Compact header with mascot
-const HEADER_WITH_MASCOT = `{bold}{cyan-fg}zai{/cyan-fg}{blue-fg}·{/blue-fg}{cyan-fg}code{/cyan-fg}{/bold} {gray-fg}v1.4.8{/gray-fg}`;
+const HEADER_WITH_MASCOT = `{bold}{cyan-fg}zai{/cyan-fg}{blue-fg}·{/blue-fg}{cyan-fg}code{/cyan-fg}{/bold} {gray-fg}v1.5.0{/gray-fg}`;
 
 const MINIMAL_LOGO = '{bold}{cyan-fg}⚡ zai·code{/cyan-fg}{/bold} {gray-fg}AI-native editor{/gray-fg}';
 
