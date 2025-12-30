@@ -83,11 +83,19 @@ function extractTextFromResponse(response) {
 // Try to parse file operations from response
 function parseFileOperations(response) {
     if (typeof response === 'string') {
-        // Try to extract JSON from markdown code blocks
-        let text = response;
+        let text = response.trim();
+        // Try to extract JSON from markdown code blocks (handle various formats)
         const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
         if (jsonMatch) {
-            text = jsonMatch[1];
+            text = jsonMatch[1].trim();
+        }
+        // Also try to find raw JSON object
+        if (!text.startsWith('{')) {
+            const jsonStart = text.indexOf('{');
+            const jsonEnd = text.lastIndexOf('}');
+            if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+                text = text.substring(jsonStart, jsonEnd + 1);
+            }
         }
         try {
             const parsed = JSON.parse(text);
@@ -98,8 +106,10 @@ function parseFileOperations(response) {
                 return parsed;
             }
         }
-        catch {
-            // Not valid JSON
+        catch (e) {
+            // JSON parse failed - try to be more lenient
+            // Sometimes the API returns malformed JSON with extra text
+            console.log((0, ui_1.dim)('Note: Could not parse response as JSON'));
         }
     }
     if (typeof response === 'object' && response !== null) {
@@ -383,10 +393,16 @@ Be decisive but careful. Only modify files when the task clearly requires it.`;
                 console.log((0, ui_1.error)(response.error));
             }
             else if (!response) {
-                // No structured response, show raw output
+                // No structured response - try to show something useful
                 const text = extractTextFromResponse(result.output);
-                if (text) {
+                // Don't dump raw JSON to the user
+                if (text && !text.startsWith('{') && !text.startsWith('[')) {
                     console.log(text);
+                }
+                else if (text) {
+                    // It's JSON that we couldn't parse - show a friendly message
+                    console.log((0, ui_1.dim)('Response received but could not be processed.'));
+                    console.log((0, ui_1.dim)('Try rephrasing your request or use /do for step-by-step mode.'));
                 }
             }
         }
