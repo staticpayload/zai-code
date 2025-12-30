@@ -1,68 +1,84 @@
-# v1.6.0 - Command Palette Redesign & Settings Fix
+# v2.0.0 - Cosmic Orange
 
-## What's New
+## Highlights
 
-### Redesigned Command Palette
-- Clean, categorized command list (Quick, Workflow, Files, Modes, Git, System)
-- Keyboard shortcuts displayed inline
-- Alias support - type partial names to find commands
-- Scrollable list with proper arrow key navigation
-- No emojis - clean ASCII symbols only
+- Cosmic Orange theme - fresh new color scheme
+- Animated mascot - cute cat companion in the header
+- Smart task routing - auto-detects complexity
+- Improved output formatting with markdown rendering
+- Better settings panel - keyboard navigation works immediately
 
-### Fixed Settings Panel
-- Keyboard navigation works immediately on open
-- Arrow keys control settings without stealing input focus
-- Enter toggles values, Esc saves and closes
-- No clicking required
+## Cosmic Orange Theme
 
-### Fixed Input Placeholder
-- Placeholder text properly hides when typing
-- No more overlay issues
+Complete visual overhaul:
+- Orange (#ff8700) and gold (#ffaf00) color palette
+- Replaces the old cyan/blue scheme
+- Applied to logo, borders, highlights, spinners, status indicators
+- Command palette selection in orange
+- Mode indicators updated
 
-### Fixed Double Input Bug
-- Removed duplicate key handlers causing double character input
+## Animated Mascot
+
+A cute cat that lives next to the ASCII logo:
+- Blinks, looks around, changes expressions
+- Animates every 800ms
+- Adds personality to the TUI
+
+## Smart Task Routing
+
+zcode now analyzes your input and automatically chooses the best path:
+- Chat/greetings -> Quick friendly response
+- Questions -> Direct answer, no file changes
+- Simple edits -> Immediate execution
+- Complex tasks -> Auto-generates plan, then executes
+
+## Output Formatting
+
+AI responses now render markdown properly:
+- Headers in bold orange
+- Inline code highlighted in gold
+- Bullet points with orange icons
+- Bold text properly rendered
+- Numbered lists with dimmed numbers
 
 ## Commands
 
-Quick Actions:
-  /do <task>     Plan + generate in one step (^D)
-  /run <task>    Full auto execution (^R)
+Quick:
+  /do <task>     Plan + generate (^D)
+  /run <task>    Full auto (^R)
   /ask <q>       Quick question (^A)
   /fix <issue>   Debug mode (^F)
 
 Workflow:
-  /plan          Generate plan (^P)
-  /generate      Create changes (^G)
-  /diff          Review changes
-  /apply         Apply changes
-  /undo          Rollback (^Z)
+  /plan, /generate, /diff, /apply, /undo, /retry, /clear
 
 Files:
   /open, /close, /files, /search, /read, /tree
 
 Modes:
-  /mode          Switch mode
-  /model         Select AI model
-  /dry-run       Toggle preview mode
+  /mode, /model, /dry-run
 
 Git:
-  /git           Git operations
-  /commit        AI commit message
+  /git, /commit
 
 System:
-  /help          Show commands
-  /settings      Settings panel (F2)
-  /status        Session status
-  /doctor        Health check
-  /exit          Exit (^C)
+  /help, /settings, /status, /doctor, /version, /reset, /exit
 
 ## Keyboard Shortcuts
-  ^D     /do
-  ^R     /run
-  ^P     /plan
-  ^G     /generate
-  ^Z     /undo
-  ^A     /ask
-  ^F     /fix
-  F2     Settings
-  S-Tab  Cycle modes
+
+  ^D       /do
+  ^R       /run
+  ^P       /plan
+  ^G       /generate
+  ^Z       /undo
+  ^A       /ask
+  ^F       /fix
+  F2       Settings
+  S-Tab    Cycle modes
+  ^C       Exit
+
+## Breaking Changes
+
+- Default mode is now `auto` (was `edit`)
+- Color scheme changed from cyan to orange
+- Mascot added to header (uses ~12 chars width)

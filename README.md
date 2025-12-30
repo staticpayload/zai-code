@@ -1,17 +1,27 @@
 # Z.ai Code
 
 ```
- ███████╗ █████╗ ██╗     ██████╗ ██████╗ ██████╗ ███████╗
- ╚══███╔╝██╔══██╗██║    ██╔════╝██╔═══██╗██╔══██╗██╔════╝
-   ███╔╝ ███████║██║    ██║     ██║   ██║██║  ██║█████╗  
+ ███████╗ █████╗ ██╗     ██████╗ ██████╗ ██████╗ ███████╗    /\_/\
+ ╚══███╔╝██╔══██╗██║    ██╔════╝██╔═══██╗██╔══██╗██╔════╝   ( o.o )
+   ███╔╝ ███████║██║    ██║     ██║   ██║██║  ██║█████╗      > ^ <
   ███╔╝  ██╔══██║██║    ██║     ██║   ██║██║  ██║██╔══╝  
  ███████╗██║  ██║██║    ╚██████╗╚██████╔╝██████╔╝███████╗
  ╚══════╝╚═╝  ╚═╝╚═╝     ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝
 ```
 
-A Z.ai-native AI code editor -- CLI-first, interactive editor shell.
+A Z.ai-native AI code editor -- CLI-first, interactive TUI with cosmic orange theme.
 
-> DISCLAIMER: This project is NOT affiliated with, endorsed by, or sponsored by Z.ai or Anthropic. It is an independent, open-source project that uses the Z.ai API.
+> DISCLAIMER: This project is NOT affiliated with, endorsed by, or sponsored by Z.ai or Anthropic.
+
+---
+
+## What's New in v2.0.0
+
+- **Cosmic Orange Theme** - Fresh new color scheme
+- **Animated Mascot** - Cute cat companion in the header
+- **Smart Task Routing** - Auto-detects task complexity
+- **Improved Output** - Markdown rendering, structured formatting
+- **Better Settings** - Keyboard-driven settings panel
 
 ---
 
@@ -35,8 +45,6 @@ npm install -g @staticpayload/zai-code
 ```
 
 ## Authentication
-
-On first run, you'll be prompted for your Z.ai API key:
 
 ```bash
 zcode auth
@@ -76,53 +84,37 @@ Or use quick commands:
 |---------|-------------|----------|
 | `/do <task>` | Plan + generate in one step | ^D |
 | `/run <task>` | Full auto: plan > generate > apply | ^R |
-| `/ask <question>` | Quick question (no file changes) | ^A |
-| `/fix <issue>` | Debug and fix an issue | ^F |
+| `/ask <question>` | Quick question | ^A |
+| `/fix <issue>` | Debug and fix | ^F |
 
 ### Workflow
 | Command | Description | Shortcut |
 |---------|-------------|----------|
 | `/plan` | Generate execution plan | ^P |
-| `/generate` | Create file changes from plan | ^G |
+| `/generate` | Create file changes | ^G |
 | `/diff` | Review pending changes | |
-| `/apply` | Apply pending changes | |
-| `/undo` | Rollback last operation | ^Z |
-| `/retry` | Retry last failed operation | |
-| `/clear` | Clear current task | |
+| `/apply` | Apply changes | |
+| `/undo` | Rollback | ^Z |
 
 ### Files
 | Command | Description |
 |---------|-------------|
 | `/open <path>` | Add file to context |
-| `/close <path>` | Remove file from context |
-| `/files` | List files in context |
-| `/search <query>` | Search files in workspace |
-| `/read <path>` | View file contents |
-| `/tree` | Show directory tree |
-
-### Modes
-| Command | Description |
-|---------|-------------|
-| `/mode <name>` | Switch mode (auto/edit/ask/debug/review/explain) |
-| `/model <name>` | Select AI model |
-| `/dry-run` | Toggle dry-run (preview only) |
-
-### Git
-| Command | Description |
-|---------|-------------|
-| `/git` | Git operations (status/log/diff) |
-| `/commit` | AI-powered commit message |
+| `/close <path>` | Remove from context |
+| `/files` | List open files |
+| `/search <q>` | Search workspace |
+| `/read <path>` | View file |
+| `/tree` | Directory tree |
 
 ### System
-| Command | Description | Shortcut |
-|---------|-------------|----------|
-| `/help` | Show all commands | |
-| `/settings` | Open settings panel | F2 |
-| `/status` | Show session status | |
-| `/doctor` | System health check | |
-| `/version` | Show version info | |
-| `/reset` | Reset entire session | |
-| `/exit` | Exit zcode | ^C |
+| Command | Description |
+|---------|-------------|
+| `/settings` | Settings panel (F2) |
+| `/mode <name>` | Switch mode |
+| `/model <name>` | Select model |
+| `/git` | Git operations |
+| `/commit` | AI commit message |
+| `/help` | Show commands |
 
 ---
 
@@ -130,42 +122,28 @@ Or use quick commands:
 
 | Mode | Description |
 |------|-------------|
-| `auto` | YOLO mode - execute tasks directly without confirmation |
-| `edit` | Default - plan/generate/apply workflow with review |
-| `ask` | Read-only - answer questions, no file changes |
-| `debug` | Investigate and fix issues |
-| `review` | Code review and analysis |
-| `explain` | Explain code concepts |
+| `auto` | YOLO - execute directly |
+| `edit` | Plan/generate/apply workflow |
+| `ask` | Read-only Q&A |
+| `debug` | Fix issues |
+| `review` | Code review |
+| `explain` | Explain code |
 
-Switch modes:
-```
-/mode auto
-/mode ask
-```
-
-Or cycle with Shift+Tab.
+Switch: `/mode auto` or Shift+Tab
 
 ---
 
 ## Workflow
 
-Standard workflow (edit mode):
 ```
-1. Type task     >  "add error handling to auth.ts"
-2. /plan         >  Generate execution plan
-3. /generate     >  Create file changes
-4. /diff         >  Review changes
-5. /apply        >  Apply changes
-6. /undo         >  Rollback if needed
+Type task  >  /plan  >  /generate  >  /diff  >  /apply
 ```
 
-Quick workflow:
+Or quick:
 ```
-/do <task>       >  Plan + generate in one step
-/run <task>      >  Plan + generate + apply (YOLO)
+/do <task>   # plan + generate
+/run <task>  # full auto
 ```
-
-No changes are made without explicit /apply (except in auto mode).
 
 ---
 
@@ -173,35 +151,21 @@ No changes are made without explicit /apply (except in auto mode).
 
 ```
 ~/.zai/
-+-- auth.json          # API key
-+-- settings.json      # User preferences
-+-- config.json        # API configuration
-+-- history.log        # Task history
+├── auth.json       # API key
+├── settings.json   # Preferences
+└── config.json     # API config
 
-.zai/                  # Project-level (gitignored)
-+-- workspace.json     # Session state
-+-- settings.json      # Project settings
-+-- context.md         # Project rules for AI
+.zai/               # Project-level
+├── workspace.json  # Session
+└── context.md      # AI rules
 ```
-
----
-
-## Safety
-
-- [x] No auto-execution in edit mode
-- [x] Dry-run mode available
-- [x] Undo/rollback support
-- [x] Git dirty state warnings
-- [x] Binary files blocked
-- [x] Large file warnings
-- [x] Smart task analysis prevents accidental overwrites
 
 ---
 
 ## Requirements
 
 - Node.js 18+
-- Z.ai API key (https://z.ai)
+- Z.ai API key
 
 ---
 
@@ -211,10 +175,11 @@ GPL-3.0
 
 ---
 
-## Author
+## Links
 
-StaticPayload - https://github.com/staticpayload
+- npm: https://www.npmjs.com/package/@staticpayload/zai-code
+- GitHub: https://github.com/staticpayload/zai-code
 
 ---
 
-> DISCLAIMER: This project is an independent, open-source tool. It is NOT affiliated with, endorsed by, or sponsored by Z.ai, Anthropic, or any related entities.
+> Independent open-source project. Not affiliated with Z.ai or Anthropic.

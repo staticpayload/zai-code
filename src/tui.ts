@@ -7,6 +7,7 @@ import { getModel, ZAI_MODELS, shouldShowLogo, loadSettings, saveSettings, Setti
 import { getActiveProfileName } from './profiles';
 import { getWorkspace } from './workspace_model';
 import { hasAgentsConfig } from './agents';
+import { tuiTags, icons } from './theme';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -109,83 +110,55 @@ function getSmartSuggestions(): string[] {
 }
 
 // Spinner frames for loading animation
-const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-const PROGRESS_CHARS = ['▱', '▰'];
-
-// Get contextual placeholder based on mode
-function getPlaceholder(): string {
-    const session = getSession();
-    const mode = session.mode;
-    
-    switch (mode) {
-        case 'auto':
-            return 'Type a task to execute automatically...';
-        case 'ask':
-            return 'Ask a question about your code...';
-        case 'debug':
-            return 'Describe the bug or error...';
-        case 'review':
-            return 'What would you like reviewed?';
-        case 'explain':
-            return 'What would you like explained?';
-        default:
-            if (session.pendingActions) return '/apply to execute, /diff to review';
-            if (session.lastPlan?.length) return '/generate to create changes';
-            if (session.currentIntent) return '/plan to create execution plan';
-            return 'Describe what you want to build...';
-    }
-}
+const SPINNER_FRAMES = icons.spinnerFrames;
+const PROGRESS_CHARS = [icons.progressEmpty, icons.progressFull];
 
 // Recent commands history
 const commandHistory: string[] = [];
 let historyIndex = -1;
 
-// Big ASCII Logo
-const ASCII_LOGO = `{bold}{cyan-fg}
+// Big ASCII Logo - Cosmic Orange
+const ASCII_LOGO = `{bold}{#ff8700-fg}
  ███████╗ █████╗ ██╗     ██████╗ ██████╗ ██████╗ ███████╗
  ╚══███╔╝██╔══██╗██║    ██╔════╝██╔═══██╗██╔══██╗██╔════╝
    ███╔╝ ███████║██║    ██║     ██║   ██║██║  ██║█████╗  
   ███╔╝  ██╔══██║██║    ██║     ██║   ██║██║  ██║██╔══╝  
  ███████╗██║  ██║██║    ╚██████╗╚██████╔╝██████╔╝███████╗
- ╚══════╝╚═╝  ╚═╝╚═╝     ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝{/cyan-fg}{/bold}
-                    {gray-fg}AI-native code editor v1.6.0{/gray-fg}`;
+ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝{/#ff8700-fg}{/bold}
+                    {gray-fg}AI-native code editor v2.0.0{/gray-fg}`;
 
-// Animated Robot Mascot Frames
+// Animated Mascot Frames - Simple Cosmic Cat/Fox
 const MASCOT_FRAMES = [
-    // Frame 1 - looking right
-    `{cyan-fg}   ╭───╮   {/cyan-fg}
-{cyan-fg}   │{/cyan-fg}{bold}{white-fg}◉ ◉{/white-fg}{/bold}{cyan-fg}│   {/cyan-fg}
-{cyan-fg}   │{/cyan-fg}{yellow-fg} ▽ {/yellow-fg}{cyan-fg}│   {/cyan-fg}
-{cyan-fg}  ╭┴───┴╮  {/cyan-fg}
-{cyan-fg}  │ {/cyan-fg}{blue-fg}ZAI{/blue-fg}{cyan-fg} │  {/cyan-fg}
-{cyan-fg}  ╰┬───┬╯  {/cyan-fg}`,
-    // Frame 2 - looking left
-    `{cyan-fg}   ╭───╮   {/cyan-fg}
-{cyan-fg}   │{/cyan-fg}{bold}{white-fg}◉ ◉{/white-fg}{/bold}{cyan-fg}│   {/cyan-fg}
-{cyan-fg}   │{/cyan-fg}{yellow-fg} ◡ {/yellow-fg}{cyan-fg}│   {/cyan-fg}
-{cyan-fg}  ╭┴───┴╮  {/cyan-fg}
-{cyan-fg}  │ {/cyan-fg}{blue-fg}ZAI{/blue-fg}{cyan-fg} │  {/cyan-fg}
-{cyan-fg}  ╰┬───┬╯  {/cyan-fg}`,
-    // Frame 3 - blinking
-    `{cyan-fg}   ╭───╮   {/cyan-fg}
-{cyan-fg}   │{/cyan-fg}{bold}{white-fg}─ ─{/white-fg}{/bold}{cyan-fg}│   {/cyan-fg}
-{cyan-fg}   │{/cyan-fg}{yellow-fg} ◡ {/yellow-fg}{cyan-fg}│   {/cyan-fg}
-{cyan-fg}  ╭┴───┴╮  {/cyan-fg}
-{cyan-fg}  │ {/cyan-fg}{blue-fg}ZAI{/blue-fg}{cyan-fg} │  {/cyan-fg}
-{cyan-fg}  ╰┬───┬╯  {/cyan-fg}`,
+    // Frame 1 - looking forward
+`{#ff8700-fg}  /\\_/\\
+ ( o.o )
+  > ^ <{/#ff8700-fg}`,
+    // Frame 2 - blink
+`{#ff8700-fg}  /\\_/\\
+ ( -.- )
+  > ^ <{/#ff8700-fg}`,
+    // Frame 3 - looking right
+`{#ff8700-fg}  /\\_/\\
+ (  o.o)
+  > ^ <{/#ff8700-fg}`,
     // Frame 4 - happy
-    `{cyan-fg}   ╭───╮   {/cyan-fg}
-{cyan-fg}   │{/cyan-fg}{bold}{white-fg}◠ ◠{/white-fg}{/bold}{cyan-fg}│   {/cyan-fg}
-{cyan-fg}   │{/cyan-fg}{yellow-fg} ◡ {/yellow-fg}{cyan-fg}│   {/cyan-fg}
-{cyan-fg}  ╭┴───┴╮  {/cyan-fg}
-{cyan-fg}  │ {/cyan-fg}{blue-fg}ZAI{/blue-fg}{cyan-fg} │  {/cyan-fg}
-{cyan-fg}  ╰┬───┬╯  {/cyan-fg}`,
+`{#ff8700-fg}  /\\_/\\
+ ( ^.^ )
+  > ^ <{/#ff8700-fg}`,
+    // Frame 5 - looking left  
+`{#ff8700-fg}  /\\_/\\
+ (o.o  )
+  > ^ <{/#ff8700-fg}`,
+    // Frame 6 - sleepy
+`{#ff8700-fg}  /\\_/\\
+ ( o.o )
+  > ~ <{/#ff8700-fg}`,
 ];
 
 // Compact header with mascot
-const HEADER_WITH_MASCOT = `{bold}{cyan-fg}zai{/cyan-fg}{blue-fg}·{/blue-fg}{cyan-fg}code{/cyan-fg}{/bold} {gray-fg}v1.6.0{/gray-fg}`;
+const HEADER_WITH_MASCOT = `{bold}{#ff8700-fg}zai{/#ff8700-fg}{#ffaf00-fg}·{/#ffaf00-fg}{#ff8700-fg}code{/#ff8700-fg}{/bold} {gray-fg}v2.0.0{/gray-fg}`;
 
-const MINIMAL_LOGO = '{bold}{cyan-fg}⚡ zai·code{/cyan-fg}{/bold} {gray-fg}AI-native editor{/gray-fg}';
+const MINIMAL_LOGO = '{bold}{#ff8700-fg}> zai·code{/#ff8700-fg}{/bold} {gray-fg}AI-native editor{/gray-fg}';
 
 // Welcome tips - rotate through these
 const WELCOME_TIPS = [
@@ -220,15 +193,15 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         warnings: false,
     });
 
-    // Theme colors - modern dark theme
+    // Theme colors - Cosmic Orange
     const theme = {
         bg: 'black',
         fg: 'white',
-        border: 'blue',
-        highlight: 'cyan',
-        accent: 'magenta',
+        border: '#ff8700',
+        highlight: '#ff8700',
+        accent: '#ffaf00',
         success: 'green',
-        warning: 'yellow',
+        warning: '#ffaf00',
         error: 'red',
         gray: 'gray'
     };
@@ -238,12 +211,14 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     let spinnerFrame = 0;
     let isProcessing = false;
     let currentTip = Math.floor(Math.random() * WELCOME_TIPS.length);
+    let mascotFrame = 0;
+    let mascotInterval: NodeJS.Timeout | null = null;
 
     // Header with ASCII logo
     const header = blessed.box({
         top: 0,
         left: 0,
-        width: '100%',
+        width: shouldShowLogo() ? '100%-12' : '100%',
         height: shouldShowLogo() ? 9 : 2,
         tags: true,
         style: {
@@ -252,14 +227,58 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         },
     });
 
+    // Mascot box - animated cat next to logo
+    const mascot = blessed.box({
+        top: 2,
+        right: 2,
+        width: 10,
+        height: 4,
+        tags: true,
+        style: {
+            fg: theme.fg,
+            bg: theme.bg,
+        },
+        hidden: !shouldShowLogo(),
+    });
+
+    // Update mascot animation
+    function updateMascot() {
+        mascot.setContent(MASCOT_FRAMES[mascotFrame]);
+        screen.render();
+    }
+
+    // Start mascot animation
+    function startMascotAnimation() {
+        if (mascotInterval) return;
+        mascotInterval = setInterval(() => {
+            mascotFrame = (mascotFrame + 1) % MASCOT_FRAMES.length;
+            updateMascot();
+        }, 800); // Change frame every 800ms
+    }
+
+    // Stop mascot animation
+    function stopMascotAnimation() {
+        if (mascotInterval) {
+            clearInterval(mascotInterval);
+            mascotInterval = null;
+        }
+    }
+
     // Update header with logo
     function updateHeader() {
         if (shouldShowLogo()) {
             header.setContent(ASCII_LOGO);
             header.height = 9;
+            header.width = '100%-12';
+            mascot.show();
+            updateMascot();
+            startMascotAnimation();
         } else {
             header.setContent(MINIMAL_LOGO);
             header.height = 2;
+            header.width = '100%';
+            mascot.hide();
+            stopMascotAnimation();
         }
     }
 
@@ -313,10 +332,10 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         }
         
         const modeColors: Record<string, string> = {
-            'auto': 'magenta', 'edit': 'cyan', 'ask': 'green',
-            'debug': 'red', 'review': 'yellow', 'explain': 'blue'
+            'auto': '#ff8700', 'edit': '#ffaf00', 'ask': 'green',
+            'debug': 'red', 'review': '#ffaf00', 'explain': '#ff8700'
         };
-        const modeColor = modeColors[mode] || 'cyan';
+        const modeColor = modeColors[mode] || '#ff8700';
         parts.push(`{${modeColor}-fg}${mode}{/${modeColor}-fg}`);
         parts.push(`{gray-fg}${model}{/gray-fg}`);
         
@@ -435,7 +454,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         processingIndicator.show();
         spinnerInterval = setInterval(() => {
             spinnerFrame = (spinnerFrame + 1) % SPINNER_FRAMES.length;
-            processingIndicator.setContent(`{cyan-fg}${SPINNER_FRAMES[spinnerFrame]} ${message}...{/cyan-fg}`);
+            processingIndicator.setContent(`{#ff8700-fg}${SPINNER_FRAMES[spinnerFrame]}{/#ff8700-fg} {gray-fg}${message}...{/gray-fg}`);
             screen.render();
         }, 80);
     }
@@ -493,20 +512,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         modeIndicator.setContent(`{bold}{${color}-fg}${icon}{/${color}-fg}{/bold}`);
     }
 
-    // Placeholder text - positioned behind input, same location
-    const placeholder = blessed.text({
-        parent: inputContainer,
-        left: 3,
-        top: 0,
-        width: '100%-5',
-        tags: true,
-        style: {
-            fg: 'gray',
-            bg: theme.bg,
-        },
-    });
-
-    // Input textbox - keys: false to prevent double input
+    // Input textbox - clean, no placeholder
     const input = blessed.textbox({
         parent: inputContainer,
         left: 3,
@@ -519,20 +525,8 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         style: {
             fg: theme.fg,
             bg: theme.bg,
-            transparent: true,  // Allow placeholder to show through when empty
         },
     });
-
-    function updatePlaceholder() {
-        const val = input.getValue() || '';
-        if (val.length === 0) {
-            placeholder.setContent(getPlaceholder());
-            placeholder.show();
-        } else {
-            placeholder.hide();
-        }
-        screen.render();
-    }
 
     // Status bar at bottom - more informative
     const statusBar = blessed.box({
@@ -560,14 +554,14 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         if (session.pendingActions || session.lastDiff) {
             state = '{yellow-fg}pending{/yellow-fg}';
         } else if (session.lastPlan && session.lastPlan.length > 0) {
-            state = '{cyan-fg}planned{/cyan-fg}';
+            state = '{#ff8700-fg}planned{/#ff8700-fg}';
         } else if (session.currentIntent) {
             state = '{blue-fg}intent{/blue-fg}';
         }
 
         const left = `{bold}[${mode}]{/bold} ${state}${dryRun}`;
         const center = `${gitStatus}`;
-        const right = `{cyan-fg}${model}{/cyan-fg} {gray-fg}/help{/gray-fg}`;
+        const right = `{#ff8700-fg}${model}{/#ff8700-fg} {gray-fg}/help{/gray-fg}`;
 
         const width = (screen.width as number) || 80;
         const padding = Math.max(0, Math.floor((width - 50) / 2));
@@ -649,6 +643,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
 
     // Add all elements to screen
     screen.append(header);
+    screen.append(mascot);
     screen.append(quickActions);
     screen.append(contextLine);
     screen.append(tips);
@@ -665,23 +660,23 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     updateTips();
     updateStatusBar();
     updateModeIndicator();
-    updatePlaceholder();
+    
     input.focus();
     screen.render();
 
     // Welcome messages
     if (restored) {
-        output.log('{green-fg}✓{/green-fg} Session restored');
+        output.log(tuiTags.success('Session restored'));
         if (session.currentIntent) {
-            output.log(`{gray-fg}  Task: ${session.currentIntent.substring(0, 60)}...{/gray-fg}`);
+            output.log(tuiTags.dim(`  Task: ${session.currentIntent.substring(0, 60)}...`));
         }
     } else {
-        output.log('{cyan-fg}Welcome to zai·code!{/cyan-fg} {gray-fg}Type a task or /help{/gray-fg}');
+        output.log('{#ff8700-fg}Welcome to zai·code!{/#ff8700-fg} {gray-fg}Type a task or /help{/gray-fg}');
     }
 
     // agents.md notice
     if (hasAgentsConfig(session.workingDirectory)) {
-        output.log('{green-fg}✓{/green-fg} agents.md detected');
+        output.log(tuiTags.success('agents.md detected'));
     }
     output.log('');
 
@@ -730,9 +725,9 @@ export async function startTUI(options: TUIOptions): Promise<void> {
             const cmdName = `/${cmd.name}`;
             
             if (isSelected) {
-                content += `{blue-bg}{white-fg}{bold} ${cmd.icon} ${cmdName.padEnd(12)} ${cmd.description.padEnd(28)} ${shortcut}{/bold}{/white-fg}{/blue-bg}\n`;
+                content += `{#ff8700-bg}{black-fg}{bold} ${cmd.icon} ${cmdName.padEnd(12)} ${cmd.description.padEnd(28)} ${shortcut}{/bold}{/black-fg}{/#ff8700-bg}\n`;
             } else {
-                content += `  {cyan-fg}${cmd.icon}{/cyan-fg} {bold}${cmdName}{/bold}${' '.repeat(Math.max(0, 12 - cmdName.length))} {gray-fg}${cmd.description}{/gray-fg} ${shortcut}\n`;
+                content += `  {#ff8700-fg}${cmd.icon}{/#ff8700-fg} {bold}${cmdName}{/bold}${' '.repeat(Math.max(0, 12 - cmdName.length))} {gray-fg}${cmd.description}{/gray-fg} ${shortcut}\n`;
             }
             itemIndex++;
             lineCount++;
@@ -811,8 +806,8 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         // Format input display
         const isCommand = value.startsWith('/');
         const inputDisplay = isCommand 
-            ? `{cyan-fg}❯{/cyan-fg} {bold}${value}{/bold}`
-            : `{cyan-fg}❯{/cyan-fg} ${value}`;
+            ? `{#ff8700-fg}>{/#ff8700-fg} {bold}${value}{/bold}`
+            : `{#ff8700-fg}>{/#ff8700-fg} ${value}`;
         output.log(inputDisplay);
         screen.render();
 
@@ -865,7 +860,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
             stopSpinner();
         } catch (e: any) {
             stopSpinner();
-            output.log(`{red-fg}✗ Error: ${e?.message || e}{/red-fg}`);
+            output.log(tuiTags.error(`Error: ${e?.message || e}`));
         }
 
         console.log = originalLog;
@@ -877,7 +872,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         updateTips();
         updateStatusBar();
         updateModeIndicator();
-        updatePlaceholder();
+        
         
         // Rotate tip
         currentTip = (currentTip + 1) % WELCOME_TIPS.length;
@@ -888,7 +883,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
 
     // Input events
     input.on('focus', () => {
-        updatePlaceholder();
+        
         screen.render();
     });
 
@@ -925,7 +920,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         if (commandHistory.length > 0 && historyIndex < commandHistory.length - 1) {
             historyIndex++;
             input.setValue(commandHistory[historyIndex]);
-            updatePlaceholder();
+            
             screen.render();
         }
     });
@@ -955,22 +950,23 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         if (historyIndex > 0) {
             historyIndex--;
             input.setValue(commandHistory[historyIndex]);
-            updatePlaceholder();
+            
             screen.render();
         } else if (historyIndex === 0) {
             historyIndex = -1;
             input.setValue('');
-            updatePlaceholder();
+            
             screen.render();
         }
     });
     
-    // Enter key for settings
+    // Enter key for settings - only handle if settings is open AND input is not focused
     screen.key(['enter'], () => {
         if (settingsOpen) {
             cycleSettingValue();
             return;
         }
+        // Don't handle enter here - let input.on('submit') handle it
     });
     
     // Escape key for settings
@@ -999,7 +995,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
                 input.setValue('/' + cmd.name + ' ');
                 togglePalette(false);
                 paletteSelectedIndex = 0;
-                updatePlaceholder();
+                
                 input.focus();
                 screen.render();
             }
@@ -1014,25 +1010,61 @@ export async function startTUI(options: TUIOptions): Promise<void> {
                 input.setValue(parts.join(' '));
                 toggleFileAutocomplete(false);
                 fileSelectedIndex = 0;
-                updatePlaceholder();
                 input.focus();
                 screen.render();
             }
         }
     });
 
-    // Manual keypress handling for other keys
-    input.on('keypress', (ch, key) => {
-        if (!key) {
-            // Character typed - check on next tick
-            setImmediate(() => {
-                updatePlaceholder();
-                screen.render();
-            });
-            return;
+    // Debounce timer for palette updates
+    let paletteUpdateTimer: NodeJS.Timeout | null = null;
+    
+    function checkPaletteVisibility() {
+        const val = input.getValue() || '';
+        
+        if (val.startsWith('/')) {
+            toggleFileAutocomplete(false);
+            fileSelectedIndex = 0;
+            togglePalette(true, val);
+            
+            // Check for file commands that need autocomplete
+            const fileCommands = ['/open ', '/read ', '/cat ', '/close '];
+            for (const cmd of fileCommands) {
+                if (val.startsWith(cmd)) {
+                    const query = val.substring(cmd.length);
+                    if (query.length > 0) {
+                        togglePalette(false);
+                        paletteSelectedIndex = 0;
+                        toggleFileAutocomplete(true, query);
+                    }
+                    break;
+                }
+            }
+        } else {
+            if (showPalette) {
+                togglePalette(false);
+                paletteSelectedIndex = 0;
+            }
+            if (showFileAutocomplete) {
+                toggleFileAutocomplete(false);
+                fileSelectedIndex = 0;
+            }
         }
+        screen.render();
+    }
 
-        if (key.name === 'escape') {
+    // Keypress handler - debounced palette check
+    input.on('keypress', (ch, key) => {
+        // Clear any pending update
+        if (paletteUpdateTimer) {
+            clearTimeout(paletteUpdateTimer);
+        }
+        
+        // Schedule palette check
+        paletteUpdateTimer = setTimeout(checkPaletteVisibility, 10);
+        
+        // Handle escape immediately
+        if (key && key.name === 'escape') {
             if (showPalette) {
                 togglePalette(false);
                 paletteSelectedIndex = 0;
@@ -1042,47 +1074,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
                 fileSelectedIndex = 0;
             }
             screen.render();
-            return;
         }
-
-        // Check input content on next tick to see if we should show palette
-        setImmediate(() => {
-            const val = input.getValue() || '';
-            updatePlaceholder();
-            
-            if (val.startsWith('/')) {
-                toggleFileAutocomplete(false);
-                fileSelectedIndex = 0;
-                
-                // Reset palette selection when filter changes
-                paletteSelectedIndex = 0;
-                togglePalette(true, val);
-                
-                // Check for file commands that need autocomplete
-                const fileCommands = ['/open ', '/read ', '/cat ', '/close '];
-                for (const cmd of fileCommands) {
-                    if (val.startsWith(cmd)) {
-                        const query = val.substring(cmd.length);
-                        if (query.length > 0) {
-                            togglePalette(false);
-                            paletteSelectedIndex = 0;
-                            toggleFileAutocomplete(true, query);
-                        }
-                        break;
-                    }
-                }
-            } else {
-                if (showPalette) {
-                    togglePalette(false);
-                    paletteSelectedIndex = 0;
-                }
-                if (showFileAutocomplete) {
-                    toggleFileAutocomplete(false);
-                    fileSelectedIndex = 0;
-                }
-            }
-            screen.render();
-        });
     });
 
     // Submit handler
@@ -1094,7 +1086,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
             input.clearValue();
             togglePalette(false);
             paletteSelectedIndex = 0;
-            updatePlaceholder();
+            
             screen.render();
             showSettingsMenu();
             return;
@@ -1110,7 +1102,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
                     togglePalette(false);
                     paletteSelectedIndex = 0;
                     input.focus();
-                    updatePlaceholder();
+                    
                     screen.render();
                     return;
                 }
@@ -1130,14 +1122,14 @@ export async function startTUI(options: TUIOptions): Promise<void> {
                 togglePalette(false);
                 fileSelectedIndex = 0;
                 paletteSelectedIndex = 0;
-                updatePlaceholder();
+                
                 screen.render();
                 
                 if (newValue && newValue.trim()) {
                     await processInput(newValue);
                 }
                 input.focus();
-                updatePlaceholder();
+                
                 screen.render();
                 return;
             }
@@ -1149,7 +1141,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         toggleFileAutocomplete(false);
         paletteSelectedIndex = 0;
         fileSelectedIndex = 0;
-        updatePlaceholder();
+        
         screen.render();
         
         // Process the input
@@ -1159,7 +1151,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         
         // Refocus input for next command
         input.focus();
-        updatePlaceholder();
+        
         screen.render();
     });
 
@@ -1209,9 +1201,9 @@ export async function startTUI(options: TUIOptions): Promise<void> {
             const val = String(value).padEnd(12);
             
             if (isSelected) {
-                lines.push(`{blue-bg}{white-fg}{bold} > ${label} ${val} {/bold}{/white-fg}{/blue-bg}`);
+                lines.push(`{#ff8700-bg}{black-fg}{bold} > ${label} ${val} {/bold}{/black-fg}{/#ff8700-bg}`);
             } else {
-                lines.push(`   {gray-fg}${label}{/gray-fg} {cyan-fg}${val}{/cyan-fg}`);
+                lines.push(`   {gray-fg}${label}{/gray-fg} {#ff8700-fg}${val}{/#ff8700-fg}`);
             }
         }
         
@@ -1281,8 +1273,10 @@ export async function startTUI(options: TUIOptions): Promise<void> {
             settingsContent = null;
         }
         
+        // Refocus input
+        input.focus();
         screen.render();
-        output.log('{green-fg}+ Settings saved{/green-fg}');
+        output.log(tuiTags.success('Settings saved'));
     }
     
     function showSettingsMenu() {
@@ -1291,7 +1285,10 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         settingsSelectedIndex = 0;
         currentSettingsData = loadSettings();
         
-        // Create modal (doesn't steal focus)
+        // Blur input so arrow keys work for settings
+        input.cancel();
+        
+        // Create modal
         settingsModal = blessed.box({
             parent: screen,
             top: 'center',
@@ -1331,12 +1328,12 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         const newMode = MODES[currentModeIndex];
         session.mode = newMode;
         
-        output.log(`{cyan-fg}Mode: ${newMode}{/cyan-fg}`);
+        output.log(tuiTags.info(`Mode: ${newMode}`));
         
         updateContextLine();
         updateStatusBar();
         updateModeIndicator();
-        updatePlaceholder();
+        
         screen.render();
     }
 
@@ -1361,7 +1358,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         // Quick /do - need to prompt for task
         input.setValue('/do ');
         input.focus();
-        updatePlaceholder();
+        
         screen.render();
     });
 
@@ -1369,7 +1366,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         // Quick /run
         input.setValue('/run ');
         input.focus();
-        updatePlaceholder();
+        
         screen.render();
     });
 
@@ -1378,11 +1375,11 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         if (screen.focused === input && !input.getValue()) {
             input.clearValue();
             togglePalette(false);
-            updatePlaceholder();
+            
             screen.render();
             await processInput('/plan');
             input.focus();
-            updatePlaceholder();
+            
             screen.render();
         }
     });
@@ -1392,11 +1389,11 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         if (screen.focused === input && !input.getValue()) {
             input.clearValue();
             togglePalette(false);
-            updatePlaceholder();
+            
             screen.render();
             await processInput('/generate');
             input.focus();
-            updatePlaceholder();
+            
             screen.render();
         }
     });
@@ -1406,11 +1403,11 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         if (screen.focused === input && !input.getValue()) {
             input.clearValue();
             togglePalette(false);
-            updatePlaceholder();
+            
             screen.render();
             await processInput('/undo');
             input.focus();
-            updatePlaceholder();
+            
             screen.render();
         }
     });
@@ -1419,7 +1416,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         // Quick /ask
         input.setValue('/ask ');
         input.focus();
-        updatePlaceholder();
+        
         screen.render();
     });
 
@@ -1427,7 +1424,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         // Quick /fix
         input.setValue('/fix ');
         input.focus();
-        updatePlaceholder();
+        
         screen.render();
     });
 
@@ -1452,7 +1449,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     });
 
     process.on('uncaughtException', (err) => {
-        output.log(`{red-fg}Error: ${err.message}{/red-fg}`);
+        output.log(tuiTags.error(`Error: ${err.message}`));
         screen.render();
     });
 

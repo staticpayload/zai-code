@@ -1,10 +1,10 @@
 import { parseInput, executeCommand, ParsedCommand } from './commands';
 import { getSession, setIntent, getIntent, IntentType, setIntentType, getMode, setPendingActions, setMode, setLastPlan, setLastDiff } from './session';
-import { hint, dim, error, success, info } from './ui';
 import { execute, ResponseSchema } from './runtime';
 import { ensureAuthenticated } from './auth';
 import { buildSystemPrompt } from './mode_prompts';
 import { applyFileOperation, applyResponse } from './apply';
+import * as theme from './theme';
 
 // ============================================================================
 // INTELLIGENT TASK ANALYSIS
@@ -185,7 +185,7 @@ async function getApiKey(): Promise<string | null> {
   try {
     return await ensureAuthenticated();
   } catch {
-    console.log(error('Authentication required. Run: zcode auth'));
+    console.log(theme.error('Authentication required. Run: zcode auth'));
     return null;
   }
 }
@@ -215,7 +215,7 @@ async function handleQuestion(input: string): Promise<void> {
   if (!apiKey) return;
 
   const session = getSession();
-  console.log(dim('Thinking...'));
+  console.log(theme.thinking('Thinking'));
   
   const result = await execute({
     instruction: `You are a helpful coding assistant. Answer this question clearly and concisely:\n\n${input}`,
@@ -223,9 +223,9 @@ async function handleQuestion(input: string): Promise<void> {
   }, apiKey);
 
   if (result.success && result.output) {
-    console.log(extractTextFromResponse(result.output));
+    console.log(theme.responseTui(extractTextFromResponse(result.output)));
   } else {
-    console.log(error(result.error || 'Failed to get answer'));
+    console.log(theme.error(result.error || 'Failed to get answer'));
   }
 }
 
@@ -235,11 +235,11 @@ async function handleSimpleEdit(input: string): Promise<void> {
   if (!apiKey) return;
 
   const session = getSession();
-  console.log(info('⚡ Executing...'));
+  console.log(theme.action(theme.icons.active, 'Executing', 'direct'));
 
   const { buildContext, formatContextForModel } = await import('./context/context_builder');
   const context = buildContext(session.workingDirectory, input, 'CODE_EDIT', session.openFiles);
-  const filesContext = formatContextForModel(context);
+  const filesContext = formatContextForModel(context, session.workingDirectory);
 
   const instruction = `You are an autonomous coding agent. Execute this task completely.
 
@@ -267,15 +267,15 @@ RULES:
 
     if (response?.files?.length) {
       await applyFiles(response.files, session.workingDirectory, input);
-      if (response.output) console.log('\n' + response.output);
+      if (response.output) console.log('\n' + theme.responseTui(response.output));
     } else if (response?.output) {
-      console.log(response.output);
+      console.log(theme.responseTui(response.output));
     } else {
       const text = extractTextFromResponse(result.output);
-      if (text && !text.startsWith('{')) console.log(text);
+      if (text && !text.startsWith('{')) console.log(theme.responseTui(text));
     }
   } else {
-    console.log(error(result.error || 'Execution failed'));
+    console.log(theme.error(result.error || 'Execution failed'));
   }
 }
 
@@ -287,11 +287,11 @@ async function handleComplexTask(input: string): Promise<void> {
   const session = getSession();
   setIntent(input);
   
-  console.log(info('📋 Complex task detected - creating plan...'));
+  console.log(theme.action(theme.icons.bullet, 'Complex task', 'generating plan'));
 
   const { buildContext, formatContextForModel } = await import('./context/context_builder');
   const context = buildContext(session.workingDirectory, input, 'CODE_EDIT', session.openFiles);
-  const filesContext = formatContextForModel(context);
+  const filesContext = formatContextForModel(context, session.workingDirectory);
 
   // Step 1: Generate plan
   const planInstruction = `Create a step-by-step plan for this task.
@@ -309,11 +309,11 @@ Respond with JSON:
   "output": "Plan summary"
 }`;
 
-  console.log(dim('Planning...'));
+  console.log(theme.thinking('Planning'));
   const planResult = await execute({ instruction: planInstruction }, apiKey);
 
   if (!planResult.success) {
-    console.log(error('Planning failed: ' + planResult.error));
+    console.log(theme.error('Planning failed: ' + planResult.error));
     return;
   }
 
@@ -321,21 +321,21 @@ Respond with JSON:
   const plan = (planResponse as any)?.plan;
   
   if (!plan || !Array.isArray(plan) || plan.length === 0) {
-    console.log(dim('No plan generated, executing directly...'));
+    console.log(theme.dim('No plan generated, executing directly...'));
     return handleSimpleEdit(input);
   }
 
   // Show plan
-  console.log(success(`Plan: ${plan.length} steps`));
+  console.log(theme.planHeader(plan.length));
   plan.forEach((step: any, i: number) => {
-    console.log(`  ${i + 1}. ${step.description}`);
+    console.log(theme.planStep(i + 1, step.description, 'pending'));
   });
   
   setLastPlan(plan.map((s: any) => ({ id: s.id, description: s.description, status: 'pending' as const })));
 
   // Step 2: Execute plan
   console.log('');
-  console.log(dim('Executing plan...'));
+  console.log(theme.thinking('Executing plan'));
 
   const executeInstruction = `Execute this plan and generate all file changes.
 
@@ -359,7 +359,7 @@ IMPORTANT: Include COMPLETE file content for every file. Never use placeholders.
   const execResult = await execute({ instruction: executeInstruction }, apiKey);
 
   if (!execResult.success) {
-    console.log(error('Execution failed: ' + execResult.error));
+    console.log(theme.error('Execution failed: ' + execResult.error));
     return;
   }
 
@@ -368,11 +368,11 @@ IMPORTANT: Include COMPLETE file content for every file. Never use placeholders.
 
   if (execResponse?.files?.length) {
     await applyFiles(execResponse.files, session.workingDirectory, input);
-    if (execResponse.output) console.log('\n' + execResponse.output);
+    if (execResponse.output) console.log('\n' + theme.responseTui(execResponse.output));
   } else if (execResponse?.output) {
-    console.log(execResponse.output);
+    console.log(theme.responseTui(execResponse.output));
   } else {
-    console.log(dim('No file changes generated.'));
+    console.log(theme.dim('No file changes generated.'));
   }
 }
 
@@ -384,11 +384,11 @@ async function applyFiles(files: ResponseSchema['files'], basePath: string, inpu
   const safeFiles = files.filter(file => {
     const p = file.path.toLowerCase();
     if (p.startsWith('src/') && !input.toLowerCase().includes('src')) {
-      console.log(dim(`  Skipped ${file.path} (not in task scope)`));
+      console.log(theme.dim(`  Skipped ${file.path} (not in task scope)`));
       return false;
     }
     if (p.startsWith('/') || p.startsWith('..')) {
-      console.log(dim(`  Skipped ${file.path} (outside project)`));
+      console.log(theme.dim(`  Skipped ${file.path} (outside project)`));
       return false;
     }
     return true;
@@ -396,32 +396,39 @@ async function applyFiles(files: ResponseSchema['files'], basePath: string, inpu
 
   if (safeFiles.length === 0) return;
 
-  console.log(success(`Applying ${safeFiles.length} file(s)...`));
+  console.log(theme.section(`Applying ${safeFiles.length} file(s)`));
   
-  let applied = 0, failed = 0;
+  let created = 0, modified = 0, deleted = 0, failed = 0;
   
   for (const file of safeFiles) {
     try {
       let filePath = file.path.startsWith('./') ? file.path.substring(2) : file.path;
+      
+      // Show what we're doing
+      console.log(theme.fileOperation(file.operation, filePath));
+      
       const result = applyFileOperation(file.operation, filePath, file.content, { basePath });
       
       if (result.success) {
-        console.log(success(`  ✓ ${file.operation}: ${filePath}`));
-        applied++;
+        console.log(theme.fileResult(file.operation, filePath, true));
+        if (file.operation === 'create') created++;
+        else if (file.operation === 'modify') modified++;
+        else if (file.operation === 'delete') deleted++;
       } else {
-        console.log(error(`  ✗ ${filePath}: ${result.error}`));
+        console.log(theme.fileResult(file.operation, filePath, false));
+        console.log(theme.error(`    ${result.error}`));
         failed++;
       }
     } catch (e: any) {
-      console.log(error(`  ✗ ${file.path}: ${e?.message}`));
+      console.log(theme.fileResult(file.operation, file.path, false));
+      console.log(theme.error(`    ${e?.message}`));
       failed++;
     }
   }
 
   console.log('');
-  if (applied > 0) console.log(success(`Applied ${applied} file(s)`));
-  if (failed > 0) console.log(error(`Failed ${failed} file(s)`));
-  console.log(hint('/undo to rollback'));
+  console.log(theme.summary({ created, modified, deleted, errors: failed }));
+  console.log(theme.hint('/undo to rollback'));
 }
 
 // ============================================================================

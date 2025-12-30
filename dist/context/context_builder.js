@@ -209,14 +209,15 @@ function buildContext(workingDir, intent, intentType, openFiles = [], maxTokens 
     };
 }
 // Format context for model
-function formatContextForModel(context) {
+function formatContextForModel(context, workingDir) {
     if (context.files.length === 0) {
         return '';
     }
     const parts = [];
     for (const file of context.files.slice(0, 20)) {
         try {
-            const content = fs.readFileSync(file.path, 'utf-8');
+            const fullPath = workingDir ? path.join(workingDir, file.path) : file.path;
+            const content = fs.readFileSync(fullPath, 'utf-8');
             parts.push(`--- ${file.path} ---\n${content}\n`);
         }
         catch {

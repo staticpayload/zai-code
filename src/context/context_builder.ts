@@ -211,7 +211,7 @@ export function buildContext(
 }
 
 // Format context for model
-export function formatContextForModel(context: ContextResult): string {
+export function formatContextForModel(context: ContextResult, workingDir?: string): string {
   if (context.files.length === 0) {
     return '';
   }
@@ -220,7 +220,8 @@ export function formatContextForModel(context: ContextResult): string {
 
   for (const file of context.files.slice(0, 20)) {
     try {
-      const content = fs.readFileSync(file.path, 'utf-8');
+      const fullPath = workingDir ? path.join(workingDir, file.path) : file.path;
+      const content = fs.readFileSync(fullPath, 'utf-8');
       parts.push(`--- ${file.path} ---\n${content}\n`);
     } catch {
       // Skip unreadable files

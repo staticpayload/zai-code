@@ -1,6 +1,6 @@
 {
   "name": "@staticpayload/zai-code",
-  "version": "1.6.0",
+  "version": "2.0.0",
   "description": "Z.ai-native AI code editor - CLI-first, interactive editor shell with keyboard-driven settings, plan-diff-apply workflow, and safety-first design",
   "main": "dist/cli.js",
   "bin": {

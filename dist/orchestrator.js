@@ -36,10 +36,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.orchestrate = orchestrate;
 const commands_1 = require("./commands");
 const session_1 = require("./session");
-const ui_1 = require("./ui");
 const runtime_1 = require("./runtime");
 const auth_1 = require("./auth");
 const apply_1 = require("./apply");
+const theme = __importStar(require("./theme"));
 // Analyze task to determine best execution strategy
 function analyzeTask(input) {
     const lower = input.toLowerCase().trim();
@@ -205,7 +205,7 @@ async function getApiKey() {
         return await (0, auth_1.ensureAuthenticated)();
     }
     catch {
-        console.log((0, ui_1.error)('Authentication required. Run: zcode auth'));
+        console.log(theme.error('Authentication required. Run: zcode auth'));
         return null;
     }
 }
@@ -232,16 +232,16 @@ async function handleQuestion(input) {
     if (!apiKey)
         return;
     const session = (0, session_1.getSession)();
-    console.log((0, ui_1.dim)('Thinking...'));
+    console.log(theme.thinking('Thinking'));
     const result = await (0, runtime_1.execute)({
         instruction: `You are a helpful coding assistant. Answer this question clearly and concisely:\n\n${input}`,
         enforceSchema: false
     }, apiKey);
     if (result.success && result.output) {
-        console.log(extractTextFromResponse(result.output));
+        console.log(theme.responseTui(extractTextFromResponse(result.output)));
     }
     else {
-        console.log((0, ui_1.error)(result.error || 'Failed to get answer'));
+        console.log(theme.error(result.error || 'Failed to get answer'));
     }
 }
 // Handle simple edits - direct execution
@@ -250,10 +250,10 @@ async function handleSimpleEdit(input) {
     if (!apiKey)
         return;
     const session = (0, session_1.getSession)();
-    console.log((0, ui_1.info)('⚡ Executing...'));
+    console.log(theme.action(theme.icons.active, 'Executing', 'direct'));
     const { buildContext, formatContextForModel } = await Promise.resolve().then(() => __importStar(require('./context/context_builder')));
     const context = buildContext(session.workingDirectory, input, 'CODE_EDIT', session.openFiles);
-    const filesContext = formatContextForModel(context);
+    const filesContext = formatContextForModel(context, session.workingDirectory);
     const instruction = `You are an autonomous coding agent. Execute this task completely.
 
 Task: ${input}
@@ -278,19 +278,19 @@ RULES:
         if (response?.files?.length) {
             await applyFiles(response.files, session.workingDirectory, input);
             if (response.output)
-                console.log('\n' + response.output);
+                console.log('\n' + theme.responseTui(response.output));
         }
         else if (response?.output) {
-            console.log(response.output);
+            console.log(theme.responseTui(response.output));
         }
         else {
             const text = extractTextFromResponse(result.output);
             if (text && !text.startsWith('{'))
-                console.log(text);
+                console.log(theme.responseTui(text));
         }
     }
     else {
-        console.log((0, ui_1.error)(result.error || 'Execution failed'));
+        console.log(theme.error(result.error || 'Execution failed'));
     }
 }
 // Handle complex tasks - plan then execute
@@ -300,10 +300,10 @@ async function handleComplexTask(input) {
         return;
     const session = (0, session_1.getSession)();
     (0, session_1.setIntent)(input);
-    console.log((0, ui_1.info)('📋 Complex task detected - creating plan...'));
+    console.log(theme.action(theme.icons.bullet, 'Complex task', 'generating plan'));
     const { buildContext, formatContextForModel } = await Promise.resolve().then(() => __importStar(require('./context/context_builder')));
     const context = buildContext(session.workingDirectory, input, 'CODE_EDIT', session.openFiles);
-    const filesContext = formatContextForModel(context);
+    const filesContext = formatContextForModel(context, session.workingDirectory);
     // Step 1: Generate plan
     const planInstruction = `Create a step-by-step plan for this task.
 
@@ -319,27 +319,27 @@ Respond with JSON:
   ],
   "output": "Plan summary"
 }`;
-    console.log((0, ui_1.dim)('Planning...'));
+    console.log(theme.thinking('Planning'));
     const planResult = await (0, runtime_1.execute)({ instruction: planInstruction }, apiKey);
     if (!planResult.success) {
-        console.log((0, ui_1.error)('Planning failed: ' + planResult.error));
+        console.log(theme.error('Planning failed: ' + planResult.error));
         return;
     }
     const planResponse = parseFileOperations(planResult.output);
     const plan = planResponse?.plan;
     if (!plan || !Array.isArray(plan) || plan.length === 0) {
-        console.log((0, ui_1.dim)('No plan generated, executing directly...'));
+        console.log(theme.dim('No plan generated, executing directly...'));
         return handleSimpleEdit(input);
     }
     // Show plan
-    console.log((0, ui_1.success)(`Plan: ${plan.length} steps`));
+    console.log(theme.planHeader(plan.length));
     plan.forEach((step, i) => {
-        console.log(`  ${i + 1}. ${step.description}`);
+        console.log(theme.planStep(i + 1, step.description, 'pending'));
     });
     (0, session_1.setLastPlan)(plan.map((s) => ({ id: s.id, description: s.description, status: 'pending' })));
     // Step 2: Execute plan
     console.log('');
-    console.log((0, ui_1.dim)('Executing plan...'));
+    console.log(theme.thinking('Executing plan'));
     const executeInstruction = `Execute this plan and generate all file changes.
 
 Task: ${input}
@@ -360,7 +360,7 @@ Respond with JSON containing ALL file operations:
 IMPORTANT: Include COMPLETE file content for every file. Never use placeholders.`;
     const execResult = await (0, runtime_1.execute)({ instruction: executeInstruction }, apiKey);
     if (!execResult.success) {
-        console.log((0, ui_1.error)('Execution failed: ' + execResult.error));
+        console.log(theme.error('Execution failed: ' + execResult.error));
         return;
     }
     const execResponse = parseFileOperations(execResult.output) ||
@@ -368,13 +368,13 @@ IMPORTANT: Include COMPLETE file content for every file. Never use placeholders.
     if (execResponse?.files?.length) {
         await applyFiles(execResponse.files, session.workingDirectory, input);
         if (execResponse.output)
-            console.log('\n' + execResponse.output);
+            console.log('\n' + theme.responseTui(execResponse.output));
     }
     else if (execResponse?.output) {
-        console.log(execResponse.output);
+        console.log(theme.responseTui(execResponse.output));
     }
     else {
-        console.log((0, ui_1.dim)('No file changes generated.'));
+        console.log(theme.dim('No file changes generated.'));
     }
 }
 // Apply files helper
@@ -385,43 +385,49 @@ async function applyFiles(files, basePath, input) {
     const safeFiles = files.filter(file => {
         const p = file.path.toLowerCase();
         if (p.startsWith('src/') && !input.toLowerCase().includes('src')) {
-            console.log((0, ui_1.dim)(`  Skipped ${file.path} (not in task scope)`));
+            console.log(theme.dim(`  Skipped ${file.path} (not in task scope)`));
             return false;
         }
         if (p.startsWith('/') || p.startsWith('..')) {
-            console.log((0, ui_1.dim)(`  Skipped ${file.path} (outside project)`));
+            console.log(theme.dim(`  Skipped ${file.path} (outside project)`));
             return false;
         }
         return true;
     });
     if (safeFiles.length === 0)
         return;
-    console.log((0, ui_1.success)(`Applying ${safeFiles.length} file(s)...`));
-    let applied = 0, failed = 0;
+    console.log(theme.section(`Applying ${safeFiles.length} file(s)`));
+    let created = 0, modified = 0, deleted = 0, failed = 0;
     for (const file of safeFiles) {
         try {
             let filePath = file.path.startsWith('./') ? file.path.substring(2) : file.path;
+            // Show what we're doing
+            console.log(theme.fileOperation(file.operation, filePath));
             const result = (0, apply_1.applyFileOperation)(file.operation, filePath, file.content, { basePath });
             if (result.success) {
-                console.log((0, ui_1.success)(`  ✓ ${file.operation}: ${filePath}`));
-                applied++;
+                console.log(theme.fileResult(file.operation, filePath, true));
+                if (file.operation === 'create')
+                    created++;
+                else if (file.operation === 'modify')
+                    modified++;
+                else if (file.operation === 'delete')
+                    deleted++;
             }
             else {
-                console.log((0, ui_1.error)(`  ✗ ${filePath}: ${result.error}`));
+                console.log(theme.fileResult(file.operation, filePath, false));
+                console.log(theme.error(`    ${result.error}`));
                 failed++;
             }
         }
         catch (e) {
-            console.log((0, ui_1.error)(`  ✗ ${file.path}: ${e?.message}`));
+            console.log(theme.fileResult(file.operation, file.path, false));
+            console.log(theme.error(`    ${e?.message}`));
             failed++;
         }
     }
     console.log('');
-    if (applied > 0)
-        console.log((0, ui_1.success)(`Applied ${applied} file(s)`));
-    if (failed > 0)
-        console.log((0, ui_1.error)(`Failed ${failed} file(s)`));
-    console.log((0, ui_1.hint)('/undo to rollback'));
+    console.log(theme.summary({ created, modified, deleted, errors: failed }));
+    console.log(theme.hint('/undo to rollback'));
 }
 async function orchestrate(input) {
     const trimmed = input.trim();

@@ -32,6 +32,7 @@ import { execute, ResponseSchema } from './runtime';
 import { getFileContent, collectWorkspace } from './workspace';
 import { applyResponse } from './apply';
 import { success, error, info, hint, dim } from './ui';
+import * as theme from './theme';
 import { runPlannerLoop, runGenerateLoop } from './planner';
 import { decomposeTask, planCurrentStep, printProgress, completeCurrentStep, skipCurrentStep } from './task_runner';
 import { undoLast, undoN, getUndoHistory, clearUndoHistory, getUndoCount } from './rollback';
