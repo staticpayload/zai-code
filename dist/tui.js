@@ -861,10 +861,8 @@ async function startTUI(options) {
     });
     // Manual keypress handling for other keys
     input.on('keypress', (ch, key) => {
-        // Hide placeholder immediately on any keypress
-        placeholder.hide();
-        screen.render();
         if (!key) {
+            // Character typed - check on next tick
             setImmediate(() => {
                 updatePlaceholder();
                 screen.render();
@@ -923,6 +921,16 @@ async function startTUI(options) {
     // Submit handler
     input.on('submit', async (value) => {
         const inputValue = value || input.getValue() || '';
+        // Check for /settings FIRST before palette handling
+        if (inputValue.trim() === '/settings') {
+            input.clearValue();
+            togglePalette(false);
+            paletteSelectedIndex = 0;
+            updatePlaceholder();
+            screen.render();
+            showSettingsMenu();
+            return;
+        }
         if (showPalette && inputValue.startsWith('/') && filteredCommandsCache.length > 0) {
             if (filteredCommandsCache[paletteSelectedIndex]) {
                 const cmd = filteredCommandsCache[paletteSelectedIndex];
@@ -1215,6 +1223,12 @@ async function startTUI(options) {
         input.focus();
         updatePlaceholder();
         screen.render();
+    });
+    // Settings shortcut - Ctrl+, or F2
+    screen.key(['f2'], () => {
+        if (!settingsOpen) {
+            showSettingsMenu();
+        }
     });
     screen.key(['q'], () => {
         // Only quit if not focused on input

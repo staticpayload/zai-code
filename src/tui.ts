@@ -904,11 +904,8 @@ export async function startTUI(options: TUIOptions): Promise<void> {
 
     // Manual keypress handling for other keys
     input.on('keypress', (ch, key) => {
-        // Hide placeholder immediately on any keypress
-        placeholder.hide();
-        screen.render();
-        
         if (!key) {
+            // Character typed - check on next tick
             setImmediate(() => {
                 updatePlaceholder();
                 screen.render();
@@ -972,6 +969,17 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     // Submit handler
     input.on('submit', async (value: string) => {
         const inputValue = value || input.getValue() || '';
+        
+        // Check for /settings FIRST before palette handling
+        if (inputValue.trim() === '/settings') {
+            input.clearValue();
+            togglePalette(false);
+            paletteSelectedIndex = 0;
+            updatePlaceholder();
+            screen.render();
+            showSettingsMenu();
+            return;
+        }
         
         if (showPalette && inputValue.startsWith('/') && filteredCommandsCache.length > 0) {
             if (filteredCommandsCache[paletteSelectedIndex]) {
@@ -1296,6 +1304,13 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         input.focus();
         updatePlaceholder();
         screen.render();
+    });
+
+    // Settings shortcut - Ctrl+, or F2
+    screen.key(['f2'], () => {
+        if (!settingsOpen) {
+            showSettingsMenu();
+        }
     });
 
     screen.key(['q'], () => {
