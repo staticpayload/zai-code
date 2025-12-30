@@ -319,28 +319,28 @@ Working directory: ${session.workingDirectory}
 
 ${filesContext ? `Relevant files:\n${filesContext}` : ''}
 
-IMPORTANT RULES:
-1. Only create/modify files that are DIRECTLY related to the user's task
-2. NEVER create files in src/ unless explicitly asked to modify source code
-3. For project files, use the .zai/ folder for any internal/temporary files
-4. If the task is unclear, respond with just an explanation - don't create files
+CRITICAL INSTRUCTIONS:
+1. You MUST respond with valid JSON containing file operations
+2. To create a folder, create a file inside it (folders are created automatically)
+3. NEVER just describe what you would do - actually provide the file operations
+4. For "create folder X", respond with a file like "X/.gitkeep" or "X/README.md"
 
-Execute this task completely. For file operations, respond with JSON:
+REQUIRED JSON FORMAT:
 {
   "status": "success",
   "files": [
-    {"path": "relative/path/to/file.ext", "operation": "create", "content": "full file content here"}
+    {"path": "folder/file.ext", "operation": "create", "content": "file content"}
   ],
-  "output": "Brief explanation of what was done"
+  "output": "Brief explanation"
 }
 
-For questions or explanations (no file changes needed), respond with:
-{
-  "status": "success", 
-  "output": "Your response here"
-}
+RULES:
+- Only create/modify files DIRECTLY related to the task
+- NEVER create files in src/ unless explicitly asked
+- Use .zai/ folder for internal/temporary files
+- Folders are created automatically when you create files inside them
 
-Be decisive but careful. Only modify files when the task clearly requires it.`;
+Respond with JSON only. No markdown, no explanation outside the JSON.`;
 
     const result = await execute({ instruction }, apiKey);
 
