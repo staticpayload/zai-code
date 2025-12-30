@@ -144,7 +144,7 @@ const ASCII_LOGO = `{bold}{cyan-fg}
   ███╔╝  ██╔══██║██║    ██║     ██║   ██║██║  ██║██╔══╝  
  ███████╗██║  ██║██║    ╚██████╗╚██████╔╝██████╔╝███████╗
  ╚══════╝╚═╝  ╚═╝╚═╝     ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝{/cyan-fg}{/bold}
-                    {gray-fg}AI-native code editor v1.4.3{/gray-fg}`;
+                    {gray-fg}AI-native code editor v1.4.6{/gray-fg}`;
 // Animated Robot Mascot Frames
 const MASCOT_FRAMES = [
     // Frame 1 - looking right
@@ -177,7 +177,7 @@ const MASCOT_FRAMES = [
 {cyan-fg}  ╰┬───┬╯  {/cyan-fg}`,
 ];
 // Compact header with mascot
-const HEADER_WITH_MASCOT = `{bold}{cyan-fg}zai{/cyan-fg}{blue-fg}·{/blue-fg}{cyan-fg}code{/cyan-fg}{/bold} {gray-fg}v1.4.3{/gray-fg}`;
+const HEADER_WITH_MASCOT = `{bold}{cyan-fg}zai{/cyan-fg}{blue-fg}·{/blue-fg}{cyan-fg}code{/cyan-fg}{/bold} {gray-fg}v1.4.6{/gray-fg}`;
 const MINIMAL_LOGO = '{bold}{cyan-fg}⚡ zai·code{/cyan-fg}{/bold} {gray-fg}AI-native editor{/gray-fg}';
 // Welcome tips - rotate through these
 const WELCOME_TIPS = [
@@ -980,7 +980,11 @@ async function startTUI(options) {
         screen.render();
     });
     // SETTINGS MODAL - Completely rewritten for proper keyboard handling
+    let settingsOpen = false; // Track settings state at module level
     function showSettingsMenu() {
+        if (settingsOpen)
+            return; // Prevent double-open
+        settingsOpen = true;
         // Disable main input while settings is open
         input.hide();
         let currentSettings = (0, settings_1.loadSettings)();
@@ -988,57 +992,64 @@ async function startTUI(options) {
         const modes = ['edit', 'auto', 'ask', 'debug', 'review', 'explain'];
         let selectedIndex = 0;
         const getListItems = () => [
-            `{cyan-fg}Model:{/cyan-fg}        ${currentSettings.model.current}`,
-            `{cyan-fg}Default Mode:{/cyan-fg} ${currentSettings.execution.defaultMode || 'edit'}`,
-            `{cyan-fg}ASCII Logo:{/cyan-fg}   ${currentSettings.ui.asciiLogo}`,
-            `{cyan-fg}Color:{/cyan-fg}        ${currentSettings.ui.color}`,
-            `{cyan-fg}Prompt Style:{/cyan-fg} ${currentSettings.ui.promptStyle}`,
-            `{cyan-fg}Confirm Mode:{/cyan-fg} ${currentSettings.execution.confirmationMode}`,
-            `{cyan-fg}Shell Exec:{/cyan-fg}   ${currentSettings.execution.allowShellExec}`,
-            `{cyan-fg}Debug Log:{/cyan-fg}    ${currentSettings.debug.logging}`
+            `  Model:        ${currentSettings.model.current}`,
+            `  Default Mode: ${currentSettings.execution.defaultMode || 'edit'}`,
+            `  ASCII Logo:   ${currentSettings.ui.asciiLogo}`,
+            `  Color:        ${currentSettings.ui.color}`,
+            `  Prompt Style: ${currentSettings.ui.promptStyle}`,
+            `  Confirm Mode: ${currentSettings.execution.confirmationMode}`,
+            `  Shell Exec:   ${currentSettings.execution.allowShellExec}`,
+            `  Debug Log:    ${currentSettings.debug.logging}`
         ];
         const modal = blessed.box({
             parent: screen,
             top: 'center',
             left: 'center',
-            width: 50,
-            height: 16,
+            width: 45,
+            height: 14,
             border: { type: 'line' },
-            label: ' ⚙ Settings ',
+            label: ' Settings (↑↓ Enter Esc) ',
             tags: true,
+            keys: true,
+            mouse: true,
             style: {
                 bg: 'black',
                 fg: 'white',
                 border: { fg: 'cyan' },
             },
         });
-        const list = blessed.list({
+        const listBox = blessed.box({
             parent: modal,
             top: 1,
-            left: 1,
-            right: 1,
-            bottom: 3,
+            left: 0,
+            right: 0,
+            bottom: 2,
             tags: true,
-            mouse: true,
-            keys: true,
-            vi: true,
             style: {
-                selected: { bg: 'blue', fg: 'white', bold: true },
-                item: { fg: 'white', bg: 'black' }
+                fg: 'white',
+                bg: 'black'
             },
-            items: getListItems()
         });
         const help = blessed.text({
             parent: modal,
-            bottom: 1,
+            bottom: 0,
             left: 1,
             tags: true,
-            content: '{gray-fg}↑↓{/gray-fg} navigate  {gray-fg}Enter{/gray-fg} toggle  {gray-fg}Esc{/gray-fg} save & exit',
+            content: '{gray-fg}↑↓/jk navigate  Enter/Space toggle  Esc/q save{/gray-fg}',
             style: { fg: 'gray', bg: 'black' }
         });
-        list.select(0);
-        list.focus();
-        screen.render();
+        function renderList() {
+            const items = getListItems();
+            const lines = items.map((item, i) => {
+                if (i === selectedIndex) {
+                    return `{blue-bg}{white-fg}{bold}>${item}{/bold}{/white-fg}{/blue-bg}`;
+                }
+                return ` ${item}`;
+            });
+            listBox.setContent(lines.join('\n'));
+            screen.render();
+        }
+        renderList();
         function cycleValue() {
             if (selectedIndex === 0) { // Model
                 const currIdx = models.indexOf(currentSettings.model.current);
@@ -1071,13 +1082,14 @@ async function startTUI(options) {
             else if (selectedIndex === 7) { // Debug Log
                 currentSettings.debug.logging = !currentSettings.debug.logging;
             }
-            list.setItems(getListItems());
-            list.select(selectedIndex);
-            screen.render();
+            renderList();
         }
         function closeSettings() {
+            if (!settingsOpen)
+                return;
+            settingsOpen = false;
             (0, settings_1.saveSettings)(currentSettings);
-            // Update header if logo setting changed
+            // Update UI
             updateHeader();
             updateStatusBar();
             updateModeIndicator();
@@ -1087,28 +1099,24 @@ async function startTUI(options) {
             screen.render();
             output.log('{green-fg}✓ Settings saved{/green-fg}');
         }
-        // List key handlers
-        list.key(['up', 'k'], () => {
+        // Direct key binding on modal for reliable input
+        modal.key(['up', 'k'], () => {
             selectedIndex = Math.max(0, selectedIndex - 1);
-            list.select(selectedIndex);
-            screen.render();
+            renderList();
         });
-        list.key(['down', 'j'], () => {
+        modal.key(['down', 'j'], () => {
             selectedIndex = Math.min(getListItems().length - 1, selectedIndex + 1);
-            list.select(selectedIndex);
-            screen.render();
+            renderList();
         });
-        list.key(['enter', 'space'], () => {
+        modal.key(['enter', 'space'], () => {
             cycleValue();
         });
-        list.key(['escape', 'q'], () => {
+        modal.key(['escape', 'q'], () => {
             closeSettings();
         });
-        // Mouse selection
-        list.on('select', (item, index) => {
-            selectedIndex = index;
-            cycleValue();
-        });
+        // Focus the modal immediately
+        modal.focus();
+        screen.render();
     }
     // Mode cycling with Shift+Tab
     const MODES = ['edit', 'auto', 'ask', 'debug', 'review', 'explain'];

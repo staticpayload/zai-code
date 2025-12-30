@@ -1,3 +1,23 @@
+# v1.4.5 Release - Settings & Output Fixes
+
+## 🐛 Bug Fixes
+
+### Settings Menu Fixed
+- Completely rewritten settings menu with screen-level key handling
+- Up/Down/Enter/Escape now work immediately without clicking
+- Visual selection indicator shows current item
+- Settings actually save and apply now
+
+### JSON Output Fixed
+- Ask/Explain/Review modes no longer return JSON
+- Responses are now in plain text as expected
+- Model prompts updated to request natural language responses
+
+### Model Default
+- GLM-4.7 is confirmed as the default model
+
+---
+
 # v1.4.4 Release - Input Fixes
 
 ## 🐛 Bug Fixes
