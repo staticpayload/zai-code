@@ -474,7 +474,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         modeIndicator.setContent(`{bold}{${color}-fg}${icon}{/${color}-fg}{/bold}`);
     }
 
-    // Input textbox
+    // Input textbox - keys: false to prevent double input
     const input = blessed.textbox({
         parent: inputContainer,
         left: 3,
@@ -482,7 +482,7 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         width: '100%-5',
         height: 1,
         inputOnFocus: true,
-        keys: true,
+        keys: false,  // IMPORTANT: false to prevent double key handling
         mouse: true,
         style: {
             fg: theme.fg,
@@ -503,13 +503,15 @@ export async function startTUI(options: TUIOptions): Promise<void> {
     });
 
     function updatePlaceholder() {
-        const val = input.getValue();
-        if (!val || val.length === 0) {
+        const val = input.getValue() || '';
+        if (val.length === 0) {
             placeholder.setContent(`{gray-fg}${getPlaceholder()}{/gray-fg}`);
             placeholder.show();
         } else {
+            placeholder.setContent('');
             placeholder.hide();
         }
+        screen.render();
     }
 
     // Status bar at bottom - more informative
@@ -902,9 +904,15 @@ export async function startTUI(options: TUIOptions): Promise<void> {
 
     // Manual keypress handling for other keys
     input.on('keypress', (ch, key) => {
+        // Hide placeholder immediately on any keypress
+        placeholder.hide();
+        screen.render();
+        
         if (!key) {
-            updatePlaceholder();
-            screen.render();
+            setImmediate(() => {
+                updatePlaceholder();
+                screen.render();
+            });
             return;
         }
 
@@ -923,10 +931,10 @@ export async function startTUI(options: TUIOptions): Promise<void> {
 
         // Check input content on next tick to see if we should show palette
         setImmediate(() => {
-            const val = input.getValue();
+            const val = input.getValue() || '';
             updatePlaceholder();
             
-            if (val && val.startsWith('/')) {
+            if (val.startsWith('/')) {
                 toggleFileAutocomplete(false);
                 fileSelectedIndex = 0;
                 
@@ -1189,8 +1197,13 @@ export async function startTUI(options: TUIOptions): Promise<void> {
         screen.render();
     }
 
-    // Shift+Tab to cycle modes
-    screen.key(['S-tab'], () => {
+    // Shift+Tab to cycle modes - try multiple key names for compatibility
+    screen.key(['S-tab', 'shift-tab'], () => {
+        cycleMode(1);
+    });
+    
+    // Also bind to backtick as alternative mode switcher
+    screen.key(['`'], () => {
         cycleMode(1);
     });
 

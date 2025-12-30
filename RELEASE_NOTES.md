@@ -1,3 +1,21 @@
+# v1.4.4 Release - Input Fixes
+
+## 🐛 Bug Fixes
+
+### Double Typing Fixed
+- Fixed `keys: true` on textbox causing double character input
+- Input now properly captures single keystrokes
+
+### Placeholder Overlap Fixed
+- Placeholder text now hides immediately on first keystroke
+- No more overlapping text while typing
+
+### Mode Cycling
+- Added backtick (`) as alternative mode switcher
+- Shift+Tab should now work on more terminals
+
+---
+
 # v1.4.3 Release - Safety & UX Fixes
 
 ## 🛡️ Safety Improvements
