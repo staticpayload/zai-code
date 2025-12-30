@@ -41,44 +41,52 @@ const git_1 = require("./git");
 const settings_1 = require("./settings");
 const workspace_model_1 = require("./workspace_model");
 const agents_1 = require("./agents");
-// Command definitions with categories and shortcuts
 const COMMANDS = [
     // Quick actions (most used)
-    { name: 'do', description: 'Quick: plan + generate', category: 'quick', shortcut: 'Ctrl+D' },
-    { name: 'run', description: 'Auto: plan + generate + apply', category: 'quick', shortcut: 'Ctrl+R' },
-    { name: 'ask', description: 'Quick question', category: 'quick', shortcut: 'Ctrl+A' },
-    { name: 'fix', description: 'Debug mode task', category: 'quick', shortcut: 'Ctrl+F' },
+    { name: 'do', description: 'Plan + generate in one step', category: 'quick', shortcut: '^D', icon: '>', alias: ['quick'] },
+    { name: 'run', description: 'Full auto: plan > generate > apply', category: 'quick', shortcut: '^R', icon: '>>', alias: ['yolo', 'auto'] },
+    { name: 'ask', description: 'Quick question (no file changes)', category: 'quick', shortcut: '^A', icon: '?', alias: ['q', 'question'] },
+    { name: 'fix', description: 'Debug and fix an issue', category: 'quick', shortcut: '^F', icon: '*', alias: ['debug', 'bug'] },
     // Workflow
-    { name: 'plan', description: 'Generate execution plan', category: 'workflow', shortcut: 'Ctrl+P' },
-    { name: 'generate', description: 'Create file changes', category: 'workflow', shortcut: 'Ctrl+G' },
-    { name: 'diff', description: 'Review pending changes', category: 'workflow' },
-    { name: 'apply', description: 'Apply changes', category: 'workflow' },
-    { name: 'undo', description: 'Rollback last operation', category: 'workflow', shortcut: 'Ctrl+Z' },
-    { name: 'retry', description: 'Retry last failed operation', category: 'workflow' },
-    { name: 'clear', description: 'Clear current task', category: 'workflow' },
+    { name: 'plan', description: 'Generate execution plan', category: 'workflow', shortcut: '^P', icon: '#', alias: ['p'] },
+    { name: 'generate', description: 'Create file changes from plan', category: 'workflow', shortcut: '^G', icon: '+', alias: ['g', 'gen'] },
+    { name: 'diff', description: 'Review pending changes', category: 'workflow', icon: '~', alias: ['d', 'changes'] },
+    { name: 'apply', description: 'Apply pending changes', category: 'workflow', icon: '!', alias: ['a', 'exec'] },
+    { name: 'undo', description: 'Rollback last operation', category: 'workflow', shortcut: '^Z', icon: '<', alias: ['u', 'rollback'] },
+    { name: 'retry', description: 'Retry last failed operation', category: 'workflow', icon: '@', alias: ['again'] },
+    { name: 'clear', description: 'Clear current task', category: 'workflow', icon: 'x', alias: ['reset-task'] },
     // Files
-    { name: 'open', description: 'Add file to context', category: 'files' },
-    { name: 'close', description: 'Remove file from context', category: 'files' },
-    { name: 'files', description: 'List open files', category: 'files' },
-    { name: 'search', description: 'Search files', category: 'files' },
-    { name: 'read', description: 'View file contents', category: 'files' },
-    { name: 'tree', description: 'Show file tree', category: 'files' },
+    { name: 'open', description: 'Add file to context', category: 'files', icon: '+', alias: ['add', 'include'] },
+    { name: 'close', description: 'Remove file from context', category: 'files', icon: '-', alias: ['remove', 'exclude'] },
+    { name: 'files', description: 'List files in context', category: 'files', icon: '.', alias: ['f', 'context'] },
+    { name: 'search', description: 'Search files in workspace', category: 'files', icon: '/', alias: ['find', 'grep'] },
+    { name: 'read', description: 'View file contents', category: 'files', icon: '>', alias: ['cat', 'view'] },
+    { name: 'tree', description: 'Show directory tree', category: 'files', icon: '|', alias: ['ls', 'dir'] },
     // Modes
-    { name: 'mode', description: 'Set mode (edit/ask/auto/debug)', category: 'modes' },
-    { name: 'model', description: 'Select AI model', category: 'modes' },
-    { name: 'dry-run', description: 'Toggle dry-run mode', category: 'modes' },
+    { name: 'mode', description: 'Switch mode (auto/edit/ask/debug)', category: 'modes', icon: '=', alias: ['m'] },
+    { name: 'model', description: 'Select AI model', category: 'modes', icon: '%', alias: ['llm'] },
+    { name: 'dry-run', description: 'Toggle dry-run (preview only)', category: 'modes', icon: '~', alias: ['preview', 'test'] },
     // Git
-    { name: 'git', description: 'Git operations', category: 'git' },
-    { name: 'commit', description: 'AI-powered commit', category: 'git' },
+    { name: 'git', description: 'Git operations (status/log/diff)', category: 'git', icon: 'g', alias: ['g'] },
+    { name: 'commit', description: 'AI-powered commit message', category: 'git', icon: 'c', alias: ['ci', 'save'] },
     // System
-    { name: 'help', description: 'Show all commands', category: 'system' },
-    { name: 'settings', description: 'Open settings menu', category: 'system' },
-    { name: 'status', description: 'Show session status', category: 'system' },
-    { name: 'doctor', description: 'System health check', category: 'system' },
-    { name: 'version', description: 'Show version', category: 'system' },
-    { name: 'reset', description: 'Reset session', category: 'system' },
-    { name: 'exit', description: 'Exit zcode', category: 'system', shortcut: 'Ctrl+C' },
+    { name: 'help', description: 'Show all commands', category: 'system', icon: '?', alias: ['h', '?'] },
+    { name: 'settings', description: 'Open settings panel', category: 'system', shortcut: 'F2', icon: '*', alias: ['config', 'prefs'] },
+    { name: 'status', description: 'Show session status', category: 'system', icon: 'i', alias: ['s', 'info'] },
+    { name: 'doctor', description: 'System health check', category: 'system', icon: '+', alias: ['health'] },
+    { name: 'version', description: 'Show version info', category: 'system', icon: 'v', alias: ['v'] },
+    { name: 'reset', description: 'Reset entire session', category: 'system', icon: 'r', alias: ['restart'] },
+    { name: 'exit', description: 'Exit zcode', category: 'system', shortcut: '^C', icon: 'q', alias: ['quit', 'q!'] },
 ];
+// Category labels and colors
+const CATEGORY_INFO = {
+    quick: { label: '[Quick]', color: 'magenta' },
+    workflow: { label: '[Workflow]', color: 'cyan' },
+    files: { label: '[Files]', color: 'green' },
+    modes: { label: '[Modes]', color: 'yellow' },
+    git: { label: '[Git]', color: 'blue' },
+    system: { label: '[System]', color: 'gray' },
+};
 // Smart suggestions based on context
 function getSmartSuggestions() {
     const session = (0, session_1.getSession)();
@@ -144,7 +152,7 @@ const ASCII_LOGO = `{bold}{cyan-fg}
   ███╔╝  ██╔══██║██║    ██║     ██║   ██║██║  ██║██╔══╝  
  ███████╗██║  ██║██║    ╚██████╗╚██████╔╝██████╔╝███████╗
  ╚══════╝╚═╝  ╚═╝╚═╝     ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝{/cyan-fg}{/bold}
-                    {gray-fg}AI-native code editor v1.5.0{/gray-fg}`;
+                    {gray-fg}AI-native code editor v1.6.0{/gray-fg}`;
 // Animated Robot Mascot Frames
 const MASCOT_FRAMES = [
     // Frame 1 - looking right
@@ -177,7 +185,7 @@ const MASCOT_FRAMES = [
 {cyan-fg}  ╰┬───┬╯  {/cyan-fg}`,
 ];
 // Compact header with mascot
-const HEADER_WITH_MASCOT = `{bold}{cyan-fg}zai{/cyan-fg}{blue-fg}·{/blue-fg}{cyan-fg}code{/cyan-fg}{/bold} {gray-fg}v1.5.0{/gray-fg}`;
+const HEADER_WITH_MASCOT = `{bold}{cyan-fg}zai{/cyan-fg}{blue-fg}·{/blue-fg}{cyan-fg}code{/cyan-fg}{/bold} {gray-fg}v1.6.0{/gray-fg}`;
 const MINIMAL_LOGO = '{bold}{cyan-fg}⚡ zai·code{/cyan-fg}{/bold} {gray-fg}AI-native editor{/gray-fg}';
 // Welcome tips - rotate through these
 const WELCOME_TIPS = [
@@ -323,10 +331,10 @@ async function startTUI(options) {
     function updateTips() {
         const smartSuggestions = getSmartSuggestions();
         if (smartSuggestions.length > 0) {
-            tips.setContent(`{gray-fg}💡 ${smartSuggestions.join('  │  ')}{/gray-fg}`);
+            tips.setContent(`{gray-fg}> ${smartSuggestions.join('  |  ')}{/gray-fg}`);
         }
         else {
-            tips.setContent(`{gray-fg}💡 ${WELCOME_TIPS[currentTip]}{/gray-fg}`);
+            tips.setContent(`{gray-fg}> ${WELCOME_TIPS[currentTip]}{/gray-fg}`);
         }
     }
     // Warning box (if in home directory)
@@ -456,11 +464,23 @@ async function startTUI(options) {
         };
         const color = modeColors[mode] || 'cyan';
         const icons = {
-            'auto': '⚡', 'edit': '❯', 'ask': '?', 'debug': '🔧', 'review': '👁', 'explain': '📖'
+            'auto': '>', 'edit': '>', 'ask': '?', 'debug': '*', 'review': '#', 'explain': '~'
         };
-        const icon = icons[mode] || '❯';
+        const icon = icons[mode] || '>';
         modeIndicator.setContent(`{bold}{${color}-fg}${icon}{/${color}-fg}{/bold}`);
     }
+    // Placeholder text - positioned behind input, same location
+    const placeholder = blessed.text({
+        parent: inputContainer,
+        left: 3,
+        top: 0,
+        width: '100%-5',
+        tags: true,
+        style: {
+            fg: 'gray',
+            bg: theme.bg,
+        },
+    });
     // Input textbox - keys: false to prevent double input
     const input = blessed.textbox({
         parent: inputContainer,
@@ -469,32 +489,21 @@ async function startTUI(options) {
         width: '100%-5',
         height: 1,
         inputOnFocus: true,
-        keys: false, // IMPORTANT: false to prevent double key handling
+        keys: false,
         mouse: true,
         style: {
             fg: theme.fg,
             bg: theme.bg,
-        },
-    });
-    // Placeholder text
-    const placeholder = blessed.text({
-        parent: inputContainer,
-        left: 4,
-        top: 0,
-        tags: true,
-        style: {
-            fg: theme.gray,
-            bg: theme.bg,
+            transparent: true, // Allow placeholder to show through when empty
         },
     });
     function updatePlaceholder() {
         const val = input.getValue() || '';
         if (val.length === 0) {
-            placeholder.setContent(`{gray-fg}${getPlaceholder()}{/gray-fg}`);
+            placeholder.setContent(getPlaceholder());
             placeholder.show();
         }
         else {
-            placeholder.setContent('');
             placeholder.hide();
         }
         screen.render();
@@ -536,34 +545,45 @@ async function startTUI(options) {
         const padding = Math.max(0, Math.floor((width - 50) / 2));
         statusBar.setContent(`${left}${' '.repeat(padding)}${center}${' '.repeat(padding)}${right}`);
     }
-    // Command palette - enhanced
-    const palette = blessed.list({
+    // Command palette - Claude Code style with categories
+    const palette = blessed.box({
         bottom: 5,
         left: 1,
-        width: 55,
-        height: 12,
+        width: 60,
+        height: 16,
         tags: true,
-        keys: false,
-        mouse: false,
-        interactive: false,
         border: {
             type: 'line',
         },
-        label: ' Commands ',
+        label: ' {bold}Commands{/bold} {gray-fg}(up/down, Tab, Esc){/gray-fg} ',
         style: {
             fg: theme.fg,
             bg: theme.bg,
             border: {
-                fg: theme.border,
+                fg: theme.highlight,
                 bg: theme.bg
-            },
-            selected: {
-                bg: theme.border,
-                fg: theme.fg,
-                bold: true,
             },
         },
         hidden: true,
+    });
+    // Palette content area (scrollable)
+    const paletteList = blessed.box({
+        parent: palette,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        tags: true,
+        scrollable: true,
+        alwaysScroll: true,
+        scrollbar: {
+            ch: '|',
+            style: { fg: 'cyan' },
+        },
+        style: {
+            fg: theme.fg,
+            bg: theme.bg,
+        },
     });
     // File autocomplete
     const fileAutocomplete = blessed.list({
@@ -635,14 +655,62 @@ async function startTUI(options) {
     let autocompleteFiles = [];
     function updatePalette(filter) {
         const query = filter.replace(/^\//, '').toLowerCase();
-        filteredCommandsCache = COMMANDS.filter(c => c.name.startsWith(query) || c.description.toLowerCase().includes(query)).slice(0, 10);
-        const items = filteredCommandsCache.map(c => {
-            const shortcut = c.shortcut ? ` {gray-fg}${c.shortcut}{/gray-fg}` : '';
-            return `{bold}{cyan-fg}/${c.name}{/cyan-fg}{/bold}  ${c.description}${shortcut}`;
-        });
-        palette.setItems(items);
-        if (filteredCommandsCache.length > 0) {
-            palette.select(0);
+        // Filter commands by name, description, or aliases
+        filteredCommandsCache = COMMANDS.filter(c => {
+            if (c.name.startsWith(query))
+                return true;
+            if (c.description.toLowerCase().includes(query))
+                return true;
+            if (c.alias?.some(a => a.startsWith(query)))
+                return true;
+            return false;
+        }).slice(0, 20);
+        // Build palette content with categories
+        let content = '';
+        let currentCategory = '';
+        let itemIndex = 0;
+        let selectedLineIndex = 0;
+        let lineCount = 0;
+        for (const cmd of filteredCommandsCache) {
+            // Add category header if changed
+            if (cmd.category !== currentCategory) {
+                currentCategory = cmd.category;
+                const catInfo = CATEGORY_INFO[cmd.category];
+                if (content)
+                    content += '\n';
+                content += `{${catInfo.color}-fg}${catInfo.label}{/${catInfo.color}-fg}\n`;
+                lineCount += 2;
+            }
+            // Track which line the selected item is on
+            if (itemIndex === paletteSelectedIndex) {
+                selectedLineIndex = lineCount;
+            }
+            // Format command line
+            const isSelected = itemIndex === paletteSelectedIndex;
+            const shortcut = cmd.shortcut ? `{gray-fg}${cmd.shortcut}{/gray-fg}` : '';
+            const cmdName = `/${cmd.name}`;
+            if (isSelected) {
+                content += `{blue-bg}{white-fg}{bold} ${cmd.icon} ${cmdName.padEnd(12)} ${cmd.description.padEnd(28)} ${shortcut}{/bold}{/white-fg}{/blue-bg}\n`;
+            }
+            else {
+                content += `  {cyan-fg}${cmd.icon}{/cyan-fg} {bold}${cmdName}{/bold}${' '.repeat(Math.max(0, 12 - cmdName.length))} {gray-fg}${cmd.description}{/gray-fg} ${shortcut}\n`;
+            }
+            itemIndex++;
+            lineCount++;
+        }
+        if (filteredCommandsCache.length === 0) {
+            content = '{gray-fg}  No matching commands{/gray-fg}';
+        }
+        paletteList.setContent(content);
+        // Scroll to keep selected item visible
+        const visibleHeight = palette.height - 2; // account for border
+        if (selectedLineIndex >= visibleHeight) {
+            paletteList.setScroll(selectedLineIndex - visibleHeight + 3);
+        }
+        else {
+            paletteList.setScroll(0);
+        }
+        if (filteredCommandsCache.length > 0 && paletteSelectedIndex >= filteredCommandsCache.length) {
             paletteSelectedIndex = 0;
         }
     }
@@ -663,6 +731,7 @@ async function startTUI(options) {
     function togglePalette(show, filter = '/') {
         showPalette = show;
         if (show) {
+            paletteSelectedIndex = 0; // Reset selection when opening
             updatePalette(filter);
             palette.show();
             screen.render();
@@ -779,11 +848,17 @@ async function startTUI(options) {
     let paletteSelectedIndex = 0;
     let fileSelectedIndex = 0;
     let filteredCommandsCache = [];
-    // Screen-level key handling for arrow keys (works better than input keypress)
+    // Screen-level key handling for arrow keys
     screen.key(['up'], () => {
+        // Settings takes priority
+        if (settingsOpen) {
+            settingsSelectedIndex = Math.max(0, settingsSelectedIndex - 1);
+            renderSettingsContent();
+            return;
+        }
         if (showPalette && filteredCommandsCache.length > 0) {
             paletteSelectedIndex = Math.max(0, paletteSelectedIndex - 1);
-            palette.select(paletteSelectedIndex);
+            updatePalette(input.getValue() || '/');
             screen.render();
             return;
         }
@@ -802,10 +877,16 @@ async function startTUI(options) {
         }
     });
     screen.key(['down'], () => {
+        // Settings takes priority
+        if (settingsOpen) {
+            settingsSelectedIndex = Math.min(settingsItems.length - 1, settingsSelectedIndex + 1);
+            renderSettingsContent();
+            return;
+        }
         if (showPalette && filteredCommandsCache.length > 0) {
             const maxIndex = filteredCommandsCache.length - 1;
             paletteSelectedIndex = Math.min(maxIndex, paletteSelectedIndex + 1);
-            palette.select(paletteSelectedIndex);
+            updatePalette(input.getValue() || '/');
             screen.render();
             return;
         }
@@ -829,6 +910,30 @@ async function startTUI(options) {
             updatePlaceholder();
             screen.render();
         }
+    });
+    // Enter key for settings
+    screen.key(['enter'], () => {
+        if (settingsOpen) {
+            cycleSettingValue();
+            return;
+        }
+    });
+    // Escape key for settings
+    screen.key(['escape'], () => {
+        if (settingsOpen) {
+            closeSettingsModal();
+            return;
+        }
+        // Also close palette/autocomplete
+        if (showPalette) {
+            togglePalette(false);
+            paletteSelectedIndex = 0;
+        }
+        if (showFileAutocomplete) {
+            toggleFileAutocomplete(false);
+            fileSelectedIndex = 0;
+        }
+        screen.render();
     });
     // Tab completion
     screen.key(['tab'], () => {
@@ -987,143 +1092,149 @@ async function startTUI(options) {
         updatePlaceholder();
         screen.render();
     });
-    // SETTINGS MODAL - Completely rewritten for proper keyboard handling
-    let settingsOpen = false; // Track settings state at module level
-    function showSettingsMenu() {
-        if (settingsOpen)
-            return; // Prevent double-open
-        settingsOpen = true;
-        // Disable main input while settings is open
-        input.hide();
-        let currentSettings = (0, settings_1.loadSettings)();
+    // SETTINGS MODAL - Screen-level key interception, input stays active
+    let settingsOpen = false;
+    let settingsSelectedIndex = 0;
+    let settingsModal = null;
+    let settingsContent = null;
+    let currentSettingsData = null;
+    const settingsItems = [
+        { key: 'model', label: 'AI Model' },
+        { key: 'defaultMode', label: 'Default Mode' },
+        { key: 'asciiLogo', label: 'ASCII Logo' },
+        { key: 'color', label: 'Color Theme' },
+        { key: 'promptStyle', label: 'Prompt Style' },
+        { key: 'confirmMode', label: 'Confirm Mode' },
+        { key: 'shellExec', label: 'Shell Exec' },
+        { key: 'debugLog', label: 'Debug Logging' },
+    ];
+    function getSettingValue(key) {
+        if (!currentSettingsData)
+            return '';
+        switch (key) {
+            case 'model': return currentSettingsData.model.current;
+            case 'defaultMode': return currentSettingsData.execution.defaultMode || 'auto';
+            case 'asciiLogo': return currentSettingsData.ui.asciiLogo;
+            case 'color': return currentSettingsData.ui.color;
+            case 'promptStyle': return currentSettingsData.ui.promptStyle;
+            case 'confirmMode': return currentSettingsData.execution.confirmationMode;
+            case 'shellExec': return currentSettingsData.execution.allowShellExec ? 'on' : 'off';
+            case 'debugLog': return currentSettingsData.debug.logging ? 'on' : 'off';
+            default: return '';
+        }
+    }
+    function renderSettingsContent() {
+        if (!settingsContent)
+            return;
+        let lines = [];
+        for (let i = 0; i < settingsItems.length; i++) {
+            const item = settingsItems[i];
+            const value = getSettingValue(item.key);
+            const isSelected = i === settingsSelectedIndex;
+            const label = item.label.padEnd(16);
+            const val = String(value).padEnd(12);
+            if (isSelected) {
+                lines.push(`{blue-bg}{white-fg}{bold} > ${label} ${val} {/bold}{/white-fg}{/blue-bg}`);
+            }
+            else {
+                lines.push(`   {gray-fg}${label}{/gray-fg} {cyan-fg}${val}{/cyan-fg}`);
+            }
+        }
+        settingsContent.setContent(lines.join('\n'));
+        screen.render();
+    }
+    function cycleSettingValue() {
+        if (!currentSettingsData)
+            return;
+        const item = settingsItems[settingsSelectedIndex];
         const models = settings_1.AVAILABLE_MODELS;
         const modes = ['edit', 'auto', 'ask', 'debug', 'review', 'explain'];
-        let selectedIndex = 0;
-        const getListItems = () => [
-            `  Model:        ${currentSettings.model.current}`,
-            `  Default Mode: ${currentSettings.execution.defaultMode || 'edit'}`,
-            `  ASCII Logo:   ${currentSettings.ui.asciiLogo}`,
-            `  Color:        ${currentSettings.ui.color}`,
-            `  Prompt Style: ${currentSettings.ui.promptStyle}`,
-            `  Confirm Mode: ${currentSettings.execution.confirmationMode}`,
-            `  Shell Exec:   ${currentSettings.execution.allowShellExec}`,
-            `  Debug Log:    ${currentSettings.debug.logging}`
-        ];
-        const modal = blessed.box({
+        switch (item.key) {
+            case 'model':
+                const currModelIdx = models.indexOf(currentSettingsData.model.current);
+                currentSettingsData.model.current = models[(currModelIdx + 1) % models.length];
+                break;
+            case 'defaultMode':
+                const currMode = currentSettingsData.execution.defaultMode || 'auto';
+                const currModeIdx = modes.indexOf(currMode);
+                currentSettingsData.execution.defaultMode = modes[(currModeIdx + 1) % modes.length];
+                break;
+            case 'asciiLogo':
+                currentSettingsData.ui.asciiLogo = currentSettingsData.ui.asciiLogo === 'on' ? 'off' : 'on';
+                break;
+            case 'color':
+                const colors = ['auto', 'on', 'off'];
+                const currColorIdx = colors.indexOf(currentSettingsData.ui.color);
+                currentSettingsData.ui.color = colors[(currColorIdx + 1) % colors.length];
+                break;
+            case 'promptStyle':
+                currentSettingsData.ui.promptStyle = currentSettingsData.ui.promptStyle === 'compact' ? 'verbose' : 'compact';
+                break;
+            case 'confirmMode':
+                currentSettingsData.execution.confirmationMode = currentSettingsData.execution.confirmationMode === 'strict' ? 'normal' : 'strict';
+                break;
+            case 'shellExec':
+                currentSettingsData.execution.allowShellExec = !currentSettingsData.execution.allowShellExec;
+                break;
+            case 'debugLog':
+                currentSettingsData.debug.logging = !currentSettingsData.debug.logging;
+                break;
+        }
+        renderSettingsContent();
+    }
+    function closeSettingsModal() {
+        if (!settingsOpen)
+            return;
+        settingsOpen = false;
+        // Save settings
+        if (currentSettingsData) {
+            (0, settings_1.saveSettings)(currentSettingsData);
+        }
+        // Update UI elements
+        updateHeader();
+        updateStatusBar();
+        updateModeIndicator();
+        // Remove modal
+        if (settingsModal) {
+            screen.remove(settingsModal);
+            settingsModal = null;
+            settingsContent = null;
+        }
+        screen.render();
+        output.log('{green-fg}+ Settings saved{/green-fg}');
+    }
+    function showSettingsMenu() {
+        if (settingsOpen)
+            return;
+        settingsOpen = true;
+        settingsSelectedIndex = 0;
+        currentSettingsData = (0, settings_1.loadSettings)();
+        // Create modal (doesn't steal focus)
+        settingsModal = blessed.box({
             parent: screen,
             top: 'center',
             left: 'center',
-            width: 45,
+            width: 50,
             height: 14,
             border: { type: 'line' },
-            label: ' Settings (↑↓ Enter Esc) ',
+            label: ' {bold}Settings{/bold} {gray-fg}(up/down, Enter, Esc){/gray-fg} ',
             tags: true,
-            keys: true,
-            mouse: true,
             style: {
                 bg: 'black',
                 fg: 'white',
                 border: { fg: 'cyan' },
             },
         });
-        const listBox = blessed.box({
-            parent: modal,
+        settingsContent = blessed.box({
+            parent: settingsModal,
             top: 1,
-            left: 0,
-            right: 0,
-            bottom: 2,
-            tags: true,
-            style: {
-                fg: 'white',
-                bg: 'black'
-            },
-        });
-        const help = blessed.text({
-            parent: modal,
-            bottom: 0,
             left: 1,
+            right: 1,
+            bottom: 1,
             tags: true,
-            content: '{gray-fg}↑↓/jk navigate  Enter/Space toggle  Esc/q save{/gray-fg}',
-            style: { fg: 'gray', bg: 'black' }
+            style: { fg: 'white', bg: 'black' },
         });
-        function renderList() {
-            const items = getListItems();
-            const lines = items.map((item, i) => {
-                if (i === selectedIndex) {
-                    return `{blue-bg}{white-fg}{bold}>${item}{/bold}{/white-fg}{/blue-bg}`;
-                }
-                return ` ${item}`;
-            });
-            listBox.setContent(lines.join('\n'));
-            screen.render();
-        }
-        renderList();
-        function cycleValue() {
-            if (selectedIndex === 0) { // Model
-                const currIdx = models.indexOf(currentSettings.model.current);
-                const nextIdx = (currIdx + 1) % models.length;
-                currentSettings.model.current = models[nextIdx];
-            }
-            else if (selectedIndex === 1) { // Default Mode
-                const currMode = currentSettings.execution.defaultMode || 'edit';
-                const currIdx = modes.indexOf(currMode);
-                const nextIdx = (currIdx + 1) % modes.length;
-                currentSettings.execution.defaultMode = modes[nextIdx];
-            }
-            else if (selectedIndex === 2) { // ASCII Logo
-                currentSettings.ui.asciiLogo = currentSettings.ui.asciiLogo === 'on' ? 'off' : 'on';
-            }
-            else if (selectedIndex === 3) { // Color
-                const vals = ['auto', 'on', 'off'];
-                const n = (vals.indexOf(currentSettings.ui.color) + 1) % 3;
-                currentSettings.ui.color = vals[n];
-            }
-            else if (selectedIndex === 4) { // Prompt Style
-                currentSettings.ui.promptStyle = currentSettings.ui.promptStyle === 'compact' ? 'verbose' : 'compact';
-            }
-            else if (selectedIndex === 5) { // Confirm Mode
-                currentSettings.execution.confirmationMode = currentSettings.execution.confirmationMode === 'strict' ? 'normal' : 'strict';
-            }
-            else if (selectedIndex === 6) { // Shell Exec
-                currentSettings.execution.allowShellExec = !currentSettings.execution.allowShellExec;
-            }
-            else if (selectedIndex === 7) { // Debug Log
-                currentSettings.debug.logging = !currentSettings.debug.logging;
-            }
-            renderList();
-        }
-        function closeSettings() {
-            if (!settingsOpen)
-                return;
-            settingsOpen = false;
-            (0, settings_1.saveSettings)(currentSettings);
-            // Update UI
-            updateHeader();
-            updateStatusBar();
-            updateModeIndicator();
-            screen.remove(modal);
-            input.show();
-            input.focus();
-            screen.render();
-            output.log('{green-fg}✓ Settings saved{/green-fg}');
-        }
-        // Direct key binding on modal for reliable input
-        modal.key(['up', 'k'], () => {
-            selectedIndex = Math.max(0, selectedIndex - 1);
-            renderList();
-        });
-        modal.key(['down', 'j'], () => {
-            selectedIndex = Math.min(getListItems().length - 1, selectedIndex + 1);
-            renderList();
-        });
-        modal.key(['enter', 'space'], () => {
-            cycleValue();
-        });
-        modal.key(['escape', 'q'], () => {
-            closeSettings();
-        });
-        // Focus the modal immediately
-        modal.focus();
+        renderSettingsContent();
         screen.render();
     }
     // Mode cycling with Shift+Tab
@@ -1133,10 +1244,7 @@ async function startTUI(options) {
         currentModeIndex = (currentModeIndex + direction + MODES.length) % MODES.length;
         const newMode = MODES[currentModeIndex];
         session.mode = newMode;
-        const modeIcons = {
-            'edit': '✏️', 'auto': '⚡', 'ask': '❓', 'debug': '🔧', 'review': '👁', 'explain': '📖'
-        };
-        output.log(`{cyan-fg}${modeIcons[newMode]} Mode: ${newMode}{/cyan-fg}`);
+        output.log(`{cyan-fg}Mode: ${newMode}{/cyan-fg}`);
         updateContextLine();
         updateStatusBar();
         updateModeIndicator();
