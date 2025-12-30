@@ -334,8 +334,14 @@ async function execute(request, apiKey) {
         }
         const outputText = extractOutputText(result.data);
         let parsedData;
+        // Strip markdown code blocks before parsing
+        let textToParse = outputText.trim();
+        const jsonMatch = textToParse.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (jsonMatch) {
+            textToParse = jsonMatch[1].trim();
+        }
         try {
-            parsedData = JSON.parse(outputText);
+            parsedData = JSON.parse(textToParse);
         }
         catch {
             // Return raw text if not JSON
