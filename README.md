@@ -162,6 +162,69 @@ Or quick:
 
 ---
 
+## Customization
+
+### agents.md
+
+Create an `agents.md` file in your project root to give the AI project-specific instructions:
+
+```markdown
+# Project Rules
+
+## Tech Stack
+- TypeScript + React
+- PostgreSQL database
+- Jest for testing
+
+## Coding Standards
+- Use functional components
+- Prefer async/await over promises
+- Always add error handling
+
+## File Structure
+- Components in src/components/
+- Utils in src/utils/
+- Types in src/types/
+
+## Don't
+- Don't modify package.json without asking
+- Don't delete test files
+- Don't use any type
+```
+
+The AI will read this file and follow your project-specific rules.
+
+### .zai/context.md
+
+Similar to agents.md but stored in the .zai folder (gitignored by default). Good for personal preferences that shouldn't be shared with the team.
+
+### Settings
+
+Press F2 or `/settings` to configure:
+- AI Model (glm-4.7, glm-4.5-air)
+- Default Mode (auto, edit, ask, etc.)
+- ASCII Logo (on/off)
+- Color Theme
+- Confirmation Mode
+- Shell Execution
+- Debug Logging
+
+Settings are stored in `~/.zai/settings.json` (global) or `.zai/settings.json` (project).
+
+### Project-level Settings
+
+Create `.zai/settings.json` in your project for project-specific settings that override global ones:
+
+```json
+{
+  "model": { "current": "glm-4.7" },
+  "execution": { "defaultMode": "edit" },
+  "ui": { "asciiLogo": "on" }
+}
+```
+
+---
+
 ## Requirements
 
 - Node.js 18+
